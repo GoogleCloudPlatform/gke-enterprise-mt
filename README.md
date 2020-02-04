@@ -4,11 +4,11 @@ This module was generated from
 [terraform-google-module-template](https://github.com/terraform-google-modules/terraform-google-module-template/). As
 the module develops, this README will be updated.
 
-See the [Enterprise Multi-Tenancy Guide](https://cloud.google.com/kubernetes-engine/docs/best-practices/enterprise-multitenancy) for more details.
+See the [Enterprise Multi-Tenancy Best Practices Guide](https://cloud.google.com/kubernetes-engine/docs/best-practices/enterprise-multitenancy) for more details.
 
 ## Usage
 
-See the [platform module README](module/platform/README.md) for usage.
+See the [platform module README](modules/platform/README.md) for usage.
 
 Functional examples are included in the
 [examples](./examples/) directory.
