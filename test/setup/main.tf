@@ -14,19 +14,7 @@
  * limitations under the License.
  */
 
-module "project" {
-  source  = "terraform-google-modules/project-factory/google"
-  version = "~> 3.0"
-
-  name              = "ci-enterprise_mt"
-  random_project_id = "true"
-  org_id            = var.org_id
-  folder_id         = var.folder_id
-  billing_account   = var.billing_account
-
-  activate_apis = [
-    "cloudresourcemanager.googleapis.com",
-    "storage-api.googleapis.com",
-    "serviceusage.googleapis.com"
-  ]
+resource "google_folder" "root_folder" {
+  display_name = format("%s-root", lower(var.prefix))
+  parent       = format("folders/%s", var.folder_id)
 }

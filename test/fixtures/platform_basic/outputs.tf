@@ -3,7 +3,7 @@ output "project_hmt_prod_service_project_id" {
 }
 
 output "project_hmt_prod_host_project_id" {
-  value = "module.example.project_hmt_prod_host_project_id
+  value = module.example.project_hmt_prod_host_project_id
 }
 
 output "vpc_shared_net_prod_network_name" {

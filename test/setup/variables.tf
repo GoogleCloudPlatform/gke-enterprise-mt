@@ -24,3 +24,13 @@ variable "folder_id" {
 variable "billing_account" {
   description = "The billing account id associated with the project, e.g. XXXXXX-YYYYYY-ZZZZZZ"
 }
+
+variable "prefix" {
+  description = "Generic prefix for root items. Change if for some reason you need to make things unique"
+  default = "Test"
+}
+
+variable "domain" {
+  description = "The domain name"
+  type        = string
+}

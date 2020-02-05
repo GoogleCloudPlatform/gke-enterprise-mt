@@ -23,21 +23,16 @@ verifier:
   name: terraform
 
 platforms:
-  - name: default
+  - name: local
 
 suites:
-  - name: simple_example
+  - name: platform_basic
     driver:
-      root_module_directory: test/fixtures/simple_example/
+      root_module_directory: test/fixtures/platform_basic/
     verifier:
       color: false
       systems:
-        - name: simple_example local
+        - name: platform_basic
           backend: local
           controls:
             - gcloud
-            - gsutil
-        - name: simple_example gcp
-          backend: gcp
-          controls:
-            - gcp

@@ -47,11 +47,11 @@ hmt-tenant-dev
   - `roles/browser` (used for the Shared VPC host project)
   - `roles/resourcemanager.projectIamAdmin` (also used for the Shared VPC host project)
   - `roles/resourcemanager.folderAdmin`
-* From the manager of the billing account used with your organization, confirm
-    this admin SA as a billing admin. Depending on how you organize things, the
-    owner of the billing account need not be in your organization. It may be
-    that the billing admin role is automatically inherited from your
-    organization admin account.
+* From the managing account for the billing account used with your organization,
+    confirm this admin SA as a billing admin. Depending on how you organize
+    things, the owner of the billing account need not be in your
+    organization. It may be that the billing admin role is automatically
+    inherited from your organization admin account.
 * These scripts can be run using local or remote terraform state. For using
   Cloud Storage with remote state, make a storage bucket, preferably in your
   organization's domain, and do the following to give the terraform SA permissions for the terraform state bucket:
