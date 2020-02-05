@@ -113,23 +113,3 @@ Run `make docker_test_lint`.
 [shellcheck]: https://www.shellcheck.net/
 [terraform-docs]: https://github.com/segmentio/terraform-docs
 [terraform]: https://terraform.io/
-
-## TODO/Bugs
-
-Bugs and other todos or details that should be tested for these modules.
-
-* Move these TODO/Bugs to github issue list.
-* The `container-engine-robot` account on the service account seems to be
-  created very late. The first run through, the IAM bindings for subnet stuff
-  can't be applied. But later on it seems to work. Note it is not due to the GKE
-  cluster not being created, as that is done later than IAM in the original
-  helmsman create script.
-* In order to view things in Pantheon, roles must be assigned to the user
-  account, as everything has been created under a service account. eg,
-```
-gcloud projects add-iam-policy-binding --member user:roi@mattcary.info --role roles/compute.admin h2-3001-prod-host-decd
-gcloud projects add-iam-policy-binding --member user:roi@mattcary.info --role roles/container.admin h2-3001-prod-host-decd
-```
-* `terraform destroy` doesn't delete past projects. It appears that using a
-  shared VPC puts liens on the host projet (and others?) which must be manually
-  deleted before the projects can be destroyed.
