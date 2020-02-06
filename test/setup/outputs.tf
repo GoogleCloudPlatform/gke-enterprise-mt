@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-output "root_folder" {
-  value = google_folder.root_folder.name
+output "root_folder_id" {
+  value = replace(google_folder.root_folder.name, "folders/", "")
 }
 
 output "organization_id" {

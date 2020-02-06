@@ -8,8 +8,8 @@ variable "billing_account" {
   type        = string
 }
 
-variable "root_folder" {
-  description = "The name of the root folder to run the test under (from test/setup/)"
+variable "root_folder_id" {
+  description = "The id of the root folder to run the test under (from test/setup/)"
   type        = string
 }
 

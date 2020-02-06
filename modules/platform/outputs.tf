@@ -21,3 +21,7 @@ output "folder_prod_id" {
 output "folder_tenants_id" {
   value = module.folder_tenants.id
 }
+
+output "cluster_prod" {
+  value = module.gke_cluster_hmt_prod
+}

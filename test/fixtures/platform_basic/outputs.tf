@@ -10,8 +10,8 @@ output "vpc_shared_net_prod_network_name" {
   value = module.example.vpc_shared_net_prod_network_name
 }
 
-output "vpc_shared_net_prod" {
-  value = module.example.vpc_shared_net_prod
+output "vpc_shared_net_prod_name" {
+  value = module.example.vpc_shared_net_prod.network_name
 }
 
 output "folder_prod_id" {
@@ -20,4 +20,8 @@ output "folder_prod_id" {
 
 output "location" {
   value = var.region
+}
+
+output "cluster_name" {
+  value = module.example.cluster_name
 }
