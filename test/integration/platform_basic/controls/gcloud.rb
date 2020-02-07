@@ -16,7 +16,7 @@ project_id = attribute('project_hmt_prod_service_project_id')
 location = attribute('location')
 cluster_name = attribute('cluster_name')
 
-control "gcloud" do
+control "GKE" do
   title "Google Compute Engine GKE configuration"
   describe command("gcloud --project=#{project_id} container clusters --zone=#{location} describe #{cluster_name} --format=json") do
     its(:exit_status) { should eq 0 }

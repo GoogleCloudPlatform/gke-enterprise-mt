@@ -8,6 +8,6 @@ module "example" {
   organization_id = var.organization_id
   billing_account = var.billing_account
   parent_folder_id = var.root_folder_id
-  prefix = "mt-test"
+  prefix = "mt-0"
   domain = var.domain
 }

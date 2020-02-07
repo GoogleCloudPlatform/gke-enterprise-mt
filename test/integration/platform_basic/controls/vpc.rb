@@ -1,10 +1,10 @@
-# Copyright 2018 Google LLC
+# Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,28 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
----
-driver:
-  name: terraform
-  command_timeout: 3600
+vpc_shared_net_prod_name = attribute('vpc_shared_net_prod_name')
+subnets = attribute('vpc_shared_net_subnets')
 
-provisioner:
-  name: terraform
+control "VPC" do
+  title "VPC configuration"
 
-verifier:
-  name: terraform
+  it "should have only one subnet" do
+    expect(subnets.length).to eq 1
+  end
 
-platforms:
-  - name: local
-
-suites:
-  - name: platform_basic
-    driver:
-      root_module_directory: test/fixtures/platform_basic/
-    verifier:
-      color: false
-      systems:
-        - name: platform_basic
-          backend: local
-          controls:
-            - gcloud
+  if "should be a prod subnet" do
+    expect(subnets[0].subnet_name.to eq "prod-subnet"
+  end
+end

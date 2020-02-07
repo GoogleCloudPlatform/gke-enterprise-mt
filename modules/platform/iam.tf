@@ -37,17 +37,16 @@ resource "google_project_iam_member" "gke-sa-iam-bindings-cloudservices" {
   member = "serviceAccount:${module.project_hmt_prod_cluster_service.project_number}@cloudservices.gserviceaccount.com"
 }
 
-#Module to assign container viewer role to tenant-admin and tenant-dev groups
-module "hmt_tenant_admin_project-iam-bindings" {
-  source   = "terraform-google-modules/iam/google//modules/projects_iam"
+resource "google_project_iam_member" "tenant-iam-bindings-admin" {
   project = module.project_hmt_prod_cluster_service.project_id
-  mode     = "additive"
-  bindings = {
-    "projects/${module.project_hmt_prod_cluster_service.project_id}/roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}" = [
-      "group:hmt-tenant-admin@${var.domain}",
-      "group:hmt-tenant-dev@${var.domain}",
-    ]
-  }
+  role = "roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  member = "group:hmt-tenant-admin@${var.domain}"
+}
+
+resource "google_project_iam_member" "tenant-iam-bindings-dev" {
+  project = module.project_hmt_prod_cluster_service.project_id
+  role = "roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  member = "group:hmt-tenant-dev@${var.domain}"
 }
 
 #Module to assign project viewer role to RBAC groups
@@ -72,7 +71,6 @@ resource "google_project_iam_custom_role" "hmt-tenant-custom-role" {
   description = "HMT Tenant Role"
   permissions = ["container.apiServices.get", "container.apiServices.list", "container.clusters.get", "container.clusters.getCredentials"]
 }
-
 
 #Module to create service accounts for workload identity demo
 module "workload_identity_demo_service_accounts" {

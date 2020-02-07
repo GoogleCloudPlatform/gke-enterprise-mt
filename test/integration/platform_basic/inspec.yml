@@ -12,6 +12,12 @@ attributes:
   - name: vpc_shared_net_prod_name
     required: true
     type: string
+  - name: vpc_shared_net_project_id
+    required: true
+    type: string
+  - name: vpc_shared_net_subnets
+    required: true
+    type: array
   - name: folder_prod_id
     required: true
     type: string

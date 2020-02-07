@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+resource "random_id" "folder_suffix" {
+  byte_length = 2
+}
+
 resource "google_folder" "root_folder" {
-  display_name = format("%s-root", lower(var.prefix))
+  display_name = format("%s-root-%s", lower(var.prefix), random_id.folder_suffix.hex)
   parent       = format("folders/%s", var.folder_id)
 }

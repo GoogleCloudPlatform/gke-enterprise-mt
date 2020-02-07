@@ -1,6 +1,6 @@
 module "gke_cluster_hmt_prod" {
   source                     = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
-  version                    = "~> 7.0.0"
+  version                    = "~> 7.2.0"
   project_id                 = module.project_hmt_prod_cluster_service.project_id
   name                       = var.prod_cluster_name
   region                     = var.region
@@ -14,6 +14,7 @@ module "gke_cluster_hmt_prod" {
   horizontal_pod_autoscaling = true
   network_policy             = true
   enable_private_endpoint    = true
+  deploy_using_private_endpoint = true
   enable_private_nodes       = true
   master_ipv4_cidr_block     = var.master_ipv4_cidr_block
   identity_namespace         = "${module.project_hmt_prod_cluster_service.project_id}.svc.id.goog"

@@ -21,10 +21,15 @@ resource "google_compute_firewall" "bastion-ssh-firewall" {
 }
 
 // The user-data script on Bastion instance provisioning
+// Note that the default tinyproxy config only allows connections from localhost 
+// which means that ssh forwarded connections are not allowed.
 data "template_file" "startup_script" {
   template = <<-EOF
   sudo apt-get update -y
   sudo apt-get install -y tinyproxy
+  sudo sed -i 's/^Allow/#Allow/' /etc/tinyproxy/tinyproxy.conf
+  sudo systemctl kill tinyproxy
+  sudo systemctl start tinyproxy
   EOF
 
 }
