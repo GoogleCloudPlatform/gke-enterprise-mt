@@ -39,13 +39,13 @@ resource "google_project_iam_member" "gke-sa-iam-bindings-cloudservices" {
 
 resource "google_project_iam_member" "tenant-iam-bindings-admin" {
   project = module.project_hmt_prod_cluster_service.project_id
-  role = "roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  role = "projects/${module.project_hmt_prod_cluster_service.project_id}/roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
   member = "group:hmt-tenant-admin@${var.domain}"
 }
 
 resource "google_project_iam_member" "tenant-iam-bindings-dev" {
   project = module.project_hmt_prod_cluster_service.project_id
-  role = "roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  role = "projects/${module.project_hmt_prod_cluster_service.project_id}/roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
   member = "group:hmt-tenant-dev@${var.domain}"
 }
 
