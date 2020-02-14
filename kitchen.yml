@@ -35,5 +35,6 @@ suites:
         - name: platform_basic
           backend: gcp
           controls:
+            - vpc
             - gcloud
             - vpc

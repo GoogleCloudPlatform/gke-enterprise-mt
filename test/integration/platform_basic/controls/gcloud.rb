@@ -13,13 +13,12 @@
 # limitations under the License.
 
 project_id = attribute('project_hmt_prod_service_project_id')
-region = attribute('region')
 cluster_name = attribute('cluster_name')
+region = attribute('region')
 
-control "platform_basic" do
+control "gcloud" do
   title "Google Compute Engine GKE configuration"
-  describe google_container_clusters(project: project_id, region: location, name: cluster_name) do
+  describe google_container_regional_cluster(project: project_id, name: cluster_name, location: region) do
     it { should exist }
-    its ('status') { should eq 'RUNNING' }
   end
 end

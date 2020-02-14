@@ -7,11 +7,11 @@ output "project_hmt_prod_host_project_id" {
 }
 
 output "vpc_shared_net_prod_name" {
-  value = module.example.vpc_shared_net_prod.name
+  value = module.example.vpc_shared_net_prod.network_name
 }
 
 output "vpc_shared_net_prod_subnet_names" {
-  value = [for s in module.example.vpc_shared_net_prod.subnets: s.subnet_name]
+  value = module.example.vpc_shared_net_prod.subnets_names
 }
 
 output "folder_prod_id" {
