@@ -13,27 +13,13 @@
 # limitations under the License.
 
 project_id = attribute('project_hmt_prod_service_project_id')
-location = attribute('location')
+region = attribute('region')
 cluster_name = attribute('cluster_name')
 
-control "GKE" do
+control "platform_basic" do
   title "Google Compute Engine GKE configuration"
-  describe command("gcloud --project=#{project_id} container clusters --zone=#{location} describe #{cluster_name} --format=json") do
-    its(:exit_status) { should eq 0 }
-    its(:stderr) { should eq '' }
-
-    let!(:data) do
-      if subject.exit_status == 0
-        JSON.parse(subject.stdout)
-      else
-        {}
-      end
-    end
-
-    describe "cluster" do
-      it "is running" do
-        expect(data['status']).to eq 'RUNNING'
-      end
-    end
+  describe google_container_clusters(project: project_id, region: location, name: cluster_name) do
+    it { should exist }
+    its ('status') { should eq 'RUNNING' }
   end
 end

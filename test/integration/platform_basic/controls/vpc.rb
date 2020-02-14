@@ -13,16 +13,15 @@
 # limitations under the License.
 
 vpc_shared_net_prod_name = attribute('vpc_shared_net_prod_name')
-subnets = attribute('vpc_shared_net_subnets')
+subnet_names = attribute('vpc_shared_net_subnet_names')
+project_id = attribute('project_hmt_prod_service_project_id')
 
-control "VPC" do
+control "platform_basic" do
   title "VPC configuration"
-
-  it "should have only one subnet" do
-    expect(subnets.length).to eq 1
-  end
-
-  if "should be a prod subnet" do
-    expect(subnets[0].subnet_name.to eq "prod-subnet"
-  end
+  describe google_compute_network(project: project_id, name: vpc_shared_net_prod_name) do
+    it { should exist }
+    its ('subnetworks.count') { should eq 1 }
+    its ('subnetworks.count') { should eq subnet_names.length }
+    its ('subnetworks.first') { should match subnet_names[0] }
+   end
 end

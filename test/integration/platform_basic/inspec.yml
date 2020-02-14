@@ -1,12 +1,13 @@
 name: platform_basic
+depends:
+  - name: inspec-gcp
+    git: https://github.com/inspec/inspec-gcp.git
+    tag: v0.10.0
 attributes:
   - name: project_hmt_prod_service_project_id
     required: true
     type: string
   - name: project_hmt_prod_host_project_id
-    required: true
-    type: string
-  - name: vpc_shared_net_prod_network_name
     required: true
     type: string
   - name: vpc_shared_net_prod_name
@@ -15,13 +16,13 @@ attributes:
   - name: vpc_shared_net_project_id
     required: true
     type: string
-  - name: vpc_shared_net_subnets
+  - name: vpc_shared_net_subnet_names
     required: true
     type: array
   - name: folder_prod_id
     required: true
     type: string
-  - name: location
+  - name: region
     required: true
     type: string
   - name: cluster_name
