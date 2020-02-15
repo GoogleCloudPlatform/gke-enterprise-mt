@@ -7,8 +7,9 @@ variable "billing_account" {
   description = "The ID of the billing account to associate the projects with"
   type        = string
 }
-variable "folder_id" {
-  description = "The ID of the parent folder"
+
+variable "root_folder_id" {
+  description = "The id of the root folder to run the test under (from test/setup/)"
   type        = string
 }
 

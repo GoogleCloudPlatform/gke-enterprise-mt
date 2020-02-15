@@ -14,11 +14,18 @@
  * limitations under the License.
  */
 
-output "project_id" {
-  value = module.project.project_id
+output "root_folder_id" {
+  value = replace(google_folder.root_folder.name, "folders/", "")
 }
 
-output "sa_key" {
-  value     = google_service_account_key.int_test.private_key
-  sensitive = true
+output "organization_id" {
+  value = var.org_id
+}
+
+output "billing_account" {
+  value = var.billing_account
+}
+
+output "domain" {
+  value = var.domain
 }

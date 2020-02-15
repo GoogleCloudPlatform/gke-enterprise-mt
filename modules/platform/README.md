@@ -32,9 +32,9 @@ hmt-tenant-dev
 * Create parent GCP folder, and create an admin project in that
   folder. Everything made by this module will live under that folder. `gcloud
   resource-manager folders create --organization ORG-ID`, `gcloud projects
-  create --folder ADMIN-PROJECT`). Make all this the default in `gcloud config`.
+  create --folder ADMIN_PROJECT`). Make all this the default in `gcloud config`.
 * Create a "terraform" service account for admin project (`gcloud iam service-accounts create
-  terraform --project ADMIN-PROJECT`)
+  terraform --project ADMIN_PROJECT`)
 * Give service account the following roles on the organization (`gcloud
   organizations add-iam-policy-binding ETC`).
   - `roles/resourcemanager.organizationViewer`
@@ -47,16 +47,16 @@ hmt-tenant-dev
   - `roles/browser` (used for the Shared VPC host project)
   - `roles/resourcemanager.projectIamAdmin` (also used for the Shared VPC host project)
   - `roles/resourcemanager.folderAdmin`
-* From the manager of the billing account used with your organization, confirm
-    this admin SA as a billing admin. Depending on how you organize things, the
-    owner of the billing account need not be in your organization. It may be
-    that the billing admin role is automatically inherited from your
-    organization admin account.
+* From the managing account for the billing account used with your organization,
+    confirm this admin SA as a billing admin. Depending on how you organize
+    things, the owner of the billing account need not be in your
+    organization. It may be that the billing admin role is automatically
+    inherited from your organization admin account.
 * These scripts can be run using local or remote terraform state. For using
   Cloud Storage with remote state, make a storage bucket, preferably in your
   organization's domain, and do the following to give the terraform SA permissions for the terraform state bucket:
 ```
-$ gsutil iam ch serviceAccount:terraform@ADMIN-PROJECT.iam.gserviceaccount.com:objectAdmin gs://BUCKET-NAME.mattcary.info
+$ gsutil iam ch serviceAccount:terraform@ADMIN_PROJECT.iam.gserviceaccount.com:objectAdmin gs://BUCKET-NAME.mattcary.info
 ```
   It will also be helpful to add your user to the service account with `roles/iam.serviceAccountTokenCreator`
   so that you will be able to impersonate it for unwedging things (like deleting projects).
@@ -68,13 +68,21 @@ for s in \
    iamcredentials.googleapis.com        \
    iam.googleapis.com                   \
    container.googleapis.com             
-do gcloud services enable $s --project ADMIN-PROJECT; done
+do gcloud services enable $s --project ADMIN_PROJECT; done
 ```
 * Download credentials for the service account and use those for the
   `SERVICE_ACCOUNT_JSON` environment variable as described in
   [CONTRIBUTING](../../CONTRIBUTING.md); export the key
    as well as `GOOGLE_APPLICATION_CREDENTIALS`
 ```
-$ gcloud iam service-accounts keys create --iam-account terraform@ADMIN-PROJECT.iam.gserviceaccount.com /path/to/credentials.json
+$ gcloud iam service-accounts keys create --iam-account terraform@ADMIN_PROJECT.iam.gserviceaccount.com /path/to/credentials.json
 $ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
 ```
+
+## Debugging Notes
+
+* The terraform@ADMIN_PROJECT service account will not have a lot of permissions
+  on the ADMIN_PROJECT itself, but will be able to work with the projects that
+  are created inside the testing folder, and those are the projects you're going
+  to want to examine anyway. The service account will be able to `gcloud
+  projects list` and that will lead to the things you actually want to examine.

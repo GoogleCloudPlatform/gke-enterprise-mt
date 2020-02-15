@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project_id = attribute('project_hmt_prod_service_project_id')
-cluster_name = attribute('cluster_name')
-region = attribute('region')
+vpc_shared_net_prod_name = attribute('vpc_shared_net_prod_name')
+subnet_names = attribute('vpc_shared_net_prod_subnet_names')
+project_id = attribute('project_hmt_prod_host_project_id')
 
-control "gcloud" do
-  title "Google Compute Engine GKE configuration"
-  describe google_container_regional_cluster(project: project_id, name: cluster_name, location: region) do
+control "vpc" do
+  title "VPC configuration"
+  describe google_compute_network(project: project_id, name: vpc_shared_net_prod_name) do
     it { should exist }
-  end
+    its ('subnetworks.count') { should eq 1 }
+    its ('subnetworks.count') { should eq subnet_names.length }
+    its ('subnetworks.first') { should match subnet_names[0] }
+   end
 end
