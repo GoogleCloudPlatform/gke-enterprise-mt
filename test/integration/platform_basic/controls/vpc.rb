@@ -14,7 +14,7 @@
 
 vpc_shared_net_prod_name = attribute('vpc_shared_net_prod_name')
 subnet_names = attribute('vpc_shared_net_prod_subnet_names')
-project_id = attribute('project_hmt_prod_host_project_id')
+project_id = attribute('project_cluster_host_project_id')
 
 control "vpc" do
   title "VPC configuration"

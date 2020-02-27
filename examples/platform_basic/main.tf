@@ -18,9 +18,11 @@ module "platform_basic" {
   source = "../../modules/platform"
 
   organization_id = var.organization_id
-  billing_account = var.billing_account
+  domain = var.domain
+  cluster_host_project_id = module.project_cluster_host.project_id
+  cluster_service_project_id = module.project_cluster_service.project_id
+  cluster_service_project_number = module.project_cluster_service.project_number
+  tenant_host_project_id = module.project_tenant_host.project_id
   region = var.region
   prefix = var.prefix
-  domain = var.domain
-  parent_folder_id = var.parent_folder_id
 }

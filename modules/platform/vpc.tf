@@ -2,7 +2,7 @@
 module "vpc_shared_net_prod" {
   source          = "terraform-google-modules/network/google"
   version         = "~> 1.2.0"
-  project_id      = module.project_hmt_prod_cluster_host_prod.project_id
+  project_id      = var.cluster_host_project_id
   network_name    = "shared-net-prod"
   shared_vpc_host = "true"
   subnets = [
@@ -31,7 +31,7 @@ module "vpc_shared_net_prod" {
 module "vpc_shared_net_tenant" {
   source          = "terraform-google-modules/network/google"
   version         = "~> 1.2.0"
-  project_id      = module.project_hmt_tenant_host.project_id
+  project_id      = var.tenant_host_project_id
   network_name    = "shared-net-tenant"
   shared_vpc_host = "true"
   subnets = [
@@ -51,7 +51,7 @@ module "vpc_shared_net_tenant" {
 module "network_network-peering" {
   source        = "terraform-google-modules/network/google//modules/network-peering"
   version       = ">= 2.0"
-  prefix        = "hmt"
+  prefix        = var.prefix
   local_network = module.vpc_shared_net_prod.network_self_link
   peer_network  = module.vpc_shared_net_tenant.network_self_link
 }

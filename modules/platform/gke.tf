@@ -1,12 +1,12 @@
-module "gke_cluster_hmt_prod" {
+module "gke_cluster" {
   source                     = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
   version                    = "~> 7.2.0"
-  project_id                 = module.project_hmt_prod_cluster_service.project_id
+  project_id                 = var.cluster_service_project_id
   name                       = var.prod_cluster_name
   region                     = var.region
   zones                      = var.zones
   network                    = module.vpc_shared_net_prod.network_name
-  network_project_id         = module.project_hmt_prod_cluster_host_prod.project_id
+  network_project_id         = var.cluster_host_project_id
   subnetwork                 = module.vpc_shared_net_prod.subnets_names[0]
   ip_range_pods              = var.ip_range_pods
   ip_range_services          = var.ip_range_services
@@ -17,7 +17,7 @@ module "gke_cluster_hmt_prod" {
   deploy_using_private_endpoint = true
   enable_private_nodes       = true
   master_ipv4_cidr_block     = var.master_ipv4_cidr_block
-  identity_namespace         = "${module.project_hmt_prod_cluster_service.project_id}.svc.id.goog"
+  identity_namespace         = "${var.cluster_service_project_id}.svc.id.goog"
   service_account            = "create"
   resource_usage_export_dataset_id = module.gke_usage_meter_dataset.dataset_name
   authenticator_security_group = "gke-security-groups@${var.domain}"
