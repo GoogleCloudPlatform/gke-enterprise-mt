@@ -9,7 +9,7 @@ resource "google_compute_firewall" "bastion-ssh-firewall" {
   name          = "bastion-ssh"
   network       = module.vpc_shared_net_prod.network_name
   direction     = "INGRESS"
-  project       = module.project_hmt_prod_cluster_host_prod.project_id
+  project       = var.cluster_host_project_id
   source_ranges = ["0.0.0.0/0"]
 
   allow {
@@ -39,7 +39,7 @@ resource "google_compute_instance" "bastion" {
   name = local.hostname
   machine_type = "g1-small"
   zone = var.zones[0]
-  project = module.project_hmt_prod_cluster_host_prod.project_id
+  project = var.cluster_host_project_id
   tags = ["bastion"]
 
   // Specify the Operating System Family and version.

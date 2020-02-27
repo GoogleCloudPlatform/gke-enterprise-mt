@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project_id = attribute('project_hmt_prod_service_project_id')
+project_id = attribute('project_cluster_service_project_id')
 cluster_name = attribute('cluster_name')
 region = attribute('region')
 

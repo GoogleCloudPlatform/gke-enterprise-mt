@@ -7,12 +7,12 @@ module "gke-subnet-iam-bindings" {
   version        = "~> 5.0.0"
   subnets        = ["${module.vpc_shared_net_prod.subnets_names[0]}"]
   subnets_region = var.region
-  project        = module.project_hmt_prod_cluster_host_prod.project_id
+  project        = var.cluster_host_project_id
   mode           = "authoritative"
   bindings = {
     "roles/compute.networkUser" = [
-      "serviceAccount:service-${module.project_hmt_prod_cluster_service.project_number}@container-engine-robot.iam.gserviceaccount.com",
-      "serviceAccount:${module.project_hmt_prod_cluster_service.project_number}@cloudservices.gserviceaccount.com",
+      "serviceAccount:service-${var.cluster_service_project_number}@container-engine-robot.iam.gserviceaccount.com",
+      "serviceAccount:${var.cluster_service_project_number}@cloudservices.gserviceaccount.com",
     ]
   }
 }
@@ -26,33 +26,33 @@ module "gke-subnet-iam-bindings" {
 # (google_project_iam_binding corresponds to authoritative).
 
 resource "google_project_iam_member" "gke-sa-iam-bindings-container" {
-  project = module.project_hmt_prod_cluster_host_prod.project_id
+  project = var.cluster_host_project_id
   role = "roles/container.hostServiceAgentUser"
-  member = "serviceAccount:service-${module.project_hmt_prod_cluster_service.project_number}@container-engine-robot.iam.gserviceaccount.com"
+  member = "serviceAccount:service-${var.cluster_service_project_number}@container-engine-robot.iam.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "gke-sa-iam-bindings-cloudservices" {
-  project = module.project_hmt_prod_cluster_host_prod.project_id
+  project = var.cluster_host_project_id
   role = "roles/container.hostServiceAgentUser"
-  member = "serviceAccount:${module.project_hmt_prod_cluster_service.project_number}@cloudservices.gserviceaccount.com"
+  member = "serviceAccount:${var.cluster_service_project_number}@cloudservices.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "tenant-iam-bindings-admin" {
-  project = module.project_hmt_prod_cluster_service.project_id
-  role = "projects/${module.project_hmt_prod_cluster_service.project_id}/roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  project = var.cluster_service_project_id
+  role = "projects/${var.cluster_service_project_id}/roles/${google_project_iam_custom_role.tenant-custom-role.role_id}"
   member = "group:hmt-tenant-admin@${var.domain}"
 }
 
 resource "google_project_iam_member" "tenant-iam-bindings-dev" {
-  project = module.project_hmt_prod_cluster_service.project_id
-  role = "projects/${module.project_hmt_prod_cluster_service.project_id}/roles/${google_project_iam_custom_role.hmt-tenant-custom-role.role_id}"
+  project = var.cluster_service_project_id
+  role = "projects/${var.cluster_service_project_id}/roles/${google_project_iam_custom_role.tenant-custom-role.role_id}"
   member = "group:hmt-tenant-dev@${var.domain}"
 }
 
 #Module to assign project viewer role to RBAC groups
 module "hmt_rbac_groups_project-iam-bindings" {
   source   = "terraform-google-modules/iam/google//modules/projects_iam"
-  project = module.project_hmt_prod_cluster_service.project_id
+  project = var.cluster_service_project_id
   mode     = "additive"
   bindings = {
     "roles/viewer" = [
@@ -64,8 +64,8 @@ module "hmt_rbac_groups_project-iam-bindings" {
   }
 }
 
-resource "google_project_iam_custom_role" "hmt-tenant-custom-role" {
-  project     = module.project_hmt_prod_cluster_service.project_id
+resource "google_project_iam_custom_role" "tenant-custom-role" {
+  project     = var.cluster_service_project_id
   role_id     = "hmtTenantRole"
   title       = "HMT Tenant Role"
   description = "HMT Tenant Role"
@@ -76,10 +76,10 @@ resource "google_project_iam_custom_role" "hmt-tenant-custom-role" {
 module "workload_identity_demo_service_accounts" {
   source        = "terraform-google-modules/service-accounts/google"
   version       = "~> 2.0"
-  project_id    = module.project_hmt_prod_cluster_service.project_id
+  project_id    = var.cluster_service_project_id
   names         = ["tenant-a-gsa", "tenant-b-gsa"]
   project_roles = [
-    "${module.project_hmt_prod_cluster_service.project_id}=>roles/iam.workloadIdentityUser",
+    "${var.cluster_service_project_id}=>roles/iam.workloadIdentityUser",
   ]
 }
 

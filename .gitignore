@@ -38,7 +38,7 @@ crash.log
 **/Gemfile.lock
 
 # Ignore any .tfvars files that are generated automatically for each Terraform run. Most
-# .tfvars files are managed as part of configuration and so should be included in
+# .tfvars files are managed as part of configuration and so should not be included in
 # version control.
 **/*.tfvars
 

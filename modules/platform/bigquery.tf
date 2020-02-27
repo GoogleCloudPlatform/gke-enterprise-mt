@@ -14,7 +14,7 @@ module "gke_usage_meter_dataset" {
   dataset_id = format( "%s_gke_usage_meter_%s", local.cleaned_prefix, random_id.random_bq_id_suffix.hex)
   dataset_name = format( "%s_gke_usage_meter_%s", local.cleaned_prefix, random_id.random_bq_id_suffix.hex)
   description       = "GKE Usage meter dataset"
-  project_id        = module.project_hmt_prod_cluster_service.project_id
+  project_id        = var.cluster_service_project_id
   location          = "US"
   time_partitioning = "DAY"
   dataset_labels = {

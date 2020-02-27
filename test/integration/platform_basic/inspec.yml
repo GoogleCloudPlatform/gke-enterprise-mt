@@ -4,10 +4,10 @@ depends:
     git: https://github.com/inspec/inspec-gcp.git
     tag: v0.10.0
 attributes:
-  - name: project_hmt_prod_service_project_id
+  - name: project_cluster_service_project_id
     required: true
     type: string
-  - name: project_hmt_prod_host_project_id
+  - name: project_cluster_host_project_id
     required: true
     type: string
   - name: vpc_shared_net_prod_name
