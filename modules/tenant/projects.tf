@@ -8,17 +8,17 @@ resource "random_id" "random_proj_id_suffix" {
 }
 
 #Module to create tenant service Project
-module "project_hmt_tenant_service" {
-  source                  = "terraform-google-modules/project-factory/google"
+module "project_tenant_service" {
+  source                  = "terraform-google-modules/project-factory/google//modules/shared_vpc"
   version                 = "~> 3.3.0"
   random_project_id       = "false"
-  name                    = format("%s-tenant-%s-service-%s", var.prefix, local.cleaned_name, random_id.random_proj_id_suffix.hex)
-  project_id              = format("%s-tenant-%s-service-%s", var.prefix, local.cleaned_name, random_id.random_proj_id_suffix.hex)
+  name                    = format("%s-tenant-%s-%s", var.prefix, local.cleaned_name, random_id.random_proj_id_suffix.hex)
+  project_id              = format("%s-tenant-%s-%s", var.prefix, local.cleaned_name, random_id.random_proj_id_suffix.hex)
   org_id                  = var.organization_id
   folder_id               = module.folder_tenant.id
   billing_account         = var.billing_account
   default_service_account = "keep"
   shared_vpc              = var.shared_vpc_project_id
-  activate_apis           = ["compute.googleapis.com"]
-  labels                  = { "tenant" : format("tenant-%s", var.tenant_name) }
+  activate_apis           = ["compute.googleapis.com", "container.googleapis.com"]
+  labels                  = { "tenant" : format("tenant-%s", local.cleaned_name) }
 }
