@@ -3,11 +3,6 @@ variable "organization_id" {
   type        = string
 }
 
-variable "domain" {
-  description = "The organization domain name"
-  type        = string
-}
-
 variable "prefix" {
   description = "The prefix used for projects and dataset ID/names"
   type        = string
@@ -30,6 +25,46 @@ variable "cluster_service_project_number" {
 
 variable "tenant_host_project_id" {
   description = "The project id used to host tenants"
+  type        = string
+}
+
+variable "org_admin_group" {
+  description = "The gsuite org admin group"
+  type        = string
+}
+
+variable "folder_admin_group" {
+  description = "The gsuite folder admin group"
+  type        = string
+}
+
+variable "network_admin_group" {
+  description = "The gsuite network admin group"
+  type        = string
+}
+
+variable "security_admin_group" {
+  description = "The gsuite network admin group"
+  type        = string
+}
+
+variable "gke_security_group" {
+  description = "The gsuite gke security group"
+  type        = string
+}
+
+variable "auditor_group" {
+  description = "The gsuite auditor group"
+  type        = string
+}
+
+variable "cluster_admin_group" {
+  description = "The gsuite cluster admin group"
+  type        = string
+}
+
+variable "tenant_admin_group" {
+  description = "The gsuite tenant admin group"
   type        = string
 }
 

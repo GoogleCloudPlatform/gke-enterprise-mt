@@ -24,3 +24,12 @@ variable "domain" {
   type        = string
 }
 
+variable "gsuite_admin_account" {
+  description = "The account email of an admin for the domain, above"
+  type        = string
+}
+
+variable "creds_path" {
+  description = "Path to terraform service account credentials file"
+  type        = string
+}
