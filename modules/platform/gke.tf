@@ -1,6 +1,6 @@
 module "gke_cluster" {
   source                     = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
-  version                    = "~> 7.2.0"
+  version                    = "~> 7.3.0"
   project_id                 = var.cluster_service_project_id
   name                       = var.prod_cluster_name
   region                     = var.region
@@ -20,7 +20,7 @@ module "gke_cluster" {
   identity_namespace         = "${var.cluster_service_project_id}.svc.id.goog"
   service_account            = "create"
   resource_usage_export_dataset_id = module.gke_usage_meter_dataset.dataset_name
-  authenticator_security_group = "gke-security-groups@${var.domain}"
+  authenticator_security_group = var.gke_security_group
   enable_vertical_pod_autoscaling = true
   remove_default_node_pool   = true
   cluster_ipv4_cidr          = null  # To avoid conflict with ip_allocation_policy

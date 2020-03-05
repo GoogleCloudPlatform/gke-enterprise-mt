@@ -40,28 +40,7 @@ resource "google_project_iam_member" "gke-sa-iam-bindings-cloudservices" {
 resource "google_project_iam_member" "tenant-iam-bindings-admin" {
   project = var.cluster_service_project_id
   role = "projects/${var.cluster_service_project_id}/roles/${google_project_iam_custom_role.tenant-custom-role.role_id}"
-  member = "group:hmt-tenant-admin@${var.domain}"
-}
-
-resource "google_project_iam_member" "tenant-iam-bindings-dev" {
-  project = var.cluster_service_project_id
-  role = "projects/${var.cluster_service_project_id}/roles/${google_project_iam_custom_role.tenant-custom-role.role_id}"
-  member = "group:hmt-tenant-dev@${var.domain}"
-}
-
-#Module to assign project viewer role to RBAC groups
-module "hmt_rbac_groups_project-iam-bindings" {
-  source   = "terraform-google-modules/iam/google//modules/projects_iam"
-  project = var.cluster_service_project_id
-  mode     = "additive"
-  bindings = {
-    "roles/viewer" = [
-      "group:hmt-ns1-admin@${var.domain}",
-      "group:hmt-ns1-dev@${var.domain}",
-      "group:hmt-ns2-admin@${var.domain}",
-      "group:hmt-ns2-dev@${var.domain}",
-    ]
-  }
+  member = "group:${var.tenant_admin_group}"
 }
 
 resource "google_project_iam_custom_role" "tenant-custom-role" {
@@ -83,7 +62,7 @@ module "workload_identity_demo_service_accounts" {
   ]
 }
 
-#Module to assign IAM configurations at Org level to hmt-org-admin group
+#Module to assign IAM configurations at Org level to the org admin group
 module "hmt_org_admin_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -92,24 +71,24 @@ module "hmt_org_admin_organization_iam_binding" {
 
   bindings = {
     "roles/resourcemanager.organizationAdmin" = [
-      "group:hmt-org-admin@${var.domain}",
+      "group:${var.org_admin_group}",
     ]
     "roles/billing.creator" = [
-      "group:hmt-org-admin@${var.domain}",
+      "group:${var.org_admin_group}",
     ]
     "roles/billing.user" = [
-      "group:hmt-org-admin@${var.domain}",
+      "group:${var.org_admin_group}",
     ]
     "roles/compute.xpnAdmin" = [
-      "group:hmt-org-admin@${var.domain}",
+      "group:${var.org_admin_group}",
     ]
     "roles/resourcemanager.projectCreator" = [
-      "group:hmt-org-admin@${var.domain}",
+      "group:${var.org_admin_group}",
     ]
   }
 }
 
-#Module to assign IAM configurations at Org level to hmt-folder-admin group
+#Module to assign IAM configurations at Org level to the folder admin group
 module "hmt_folder_admin_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -118,18 +97,18 @@ module "hmt_folder_admin_organization_iam_binding" {
 
   bindings = {
     "roles/resourcemanager.folderAdmin" = [
-      "group:hmt-folder-admin@${var.domain}",
+      "group:${var.folder_admin_group}",
     ]
     "roles/resourcemanager.projectCreator" = [
-      "group:hmt-folder-admin@${var.domain}",
+      "group:${var.folder_admin_group}",
     ]
     "roles/billing.user" = [
-      "group:hmt-folder-admin@${var.domain}",
+      "group:${var.folder_admin_group}",
     ]
   }
 }
 
-#Module to assign IAM configurations at Org level to hmt-network-admin group
+#Module to assign IAM configurations at Org level to the network admin group
 module "hmt_network_admin_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -138,12 +117,12 @@ module "hmt_network_admin_organization_iam_binding" {
 
   bindings = {
     "roles/compute.networkAdmin" = [
-      "group:hmt-network-admin@${var.domain}",
+      "group:${var.network_admin_group}",
     ]
   }
 }
 
-#Module to assign IAM configurations at Org level to hmt-security-admin group
+#Module to assign IAM configurations at Org level to the security admin group
 module "hmt_security_admin_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -152,12 +131,12 @@ module "hmt_security_admin_organization_iam_binding" {
 
   bindings = {
     "roles/compute.securityAdmin" = [
-      "group:hmt-security-admin@${var.domain}",
+      "group:${var.security_admin_group}",
     ]
   }
 }
 
-#Module to assign IAM configurations at Org level to hmt-auditor group
+#Module to assign IAM configurations at Org level to auditor group
 module "hmt_auditor_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -166,12 +145,12 @@ module "hmt_auditor_organization_iam_binding" {
 
   bindings = {
     "roles/logging.privateLogViewer" = [
-      "group:hmt-auditor@${var.domain}",
+      "group:${var.auditor_group}",
     ]
   }
 }
 
-#Module to assign IAM configurations at Org level to hmt-cluster-admin group
+#Module to assign IAM configurations at Org level to the cluster admin group
 module "hmt_cluster_admin_organization_iam_binding" {
   source        = "terraform-google-modules/iam/google//modules/organizations_iam"
   version       = "~> 5.0.0"
@@ -180,7 +159,7 @@ module "hmt_cluster_admin_organization_iam_binding" {
 
   bindings = {
     "roles/container.clusterAdmin" = [
-      "group:hmt-cluster-admin@${var.domain}",
+      "group:${var.cluster_admin_group}",
     ]
   }
 }
