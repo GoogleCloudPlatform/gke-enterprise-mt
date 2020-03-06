@@ -4,6 +4,13 @@ See the [Enterprise Multi-Tenancy Best Practices
 Guide](https://cloud.google.com/kubernetes-engine/docs/best-practices/enterprise-multitenancy)
 for an overview of the philosophy of this module.
 
+This module is at an alpha level of development. It is being actively worked on,
+and refactorings will be frequest. Please start an issue for any friction you
+have or suggestions you have for better organization.
+
+As such, there are no tagged releases yet. Expect backward-incompatible and
+breaking changes to be frequent. Fork this repo if you need some stability.
+
 ## Usage
 
 The [platform](modules/platform/README.md) terraform module deploys a shared VPC GKE

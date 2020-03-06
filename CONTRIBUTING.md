@@ -1,8 +1,10 @@
 # Contributing
 
-This document provides guidelines for contributing to the module. This module is
-slightly different than other Cloud Foundation Toolkit modules, and we have
-tried to highlight the differences in the discussion below.
+This document provides guidelines for contributing to the module. While this
+module was generated from
+[terraform-google-module-template](https://github.com/terraform-google-modules/terraform-google-module-template/),
+it is slightly different than other Cloud Foundation Toolkit modules, and we
+have tried to highlight the differences in the discussion below.
 
 ## Dependencies
 
