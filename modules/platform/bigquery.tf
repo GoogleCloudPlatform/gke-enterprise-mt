@@ -3,7 +3,6 @@ resource "random_id" "random_bq_id_suffix" {
   byte_length = 2
 }
 
-
 locals {
   cleaned_prefix = replace(var.prefix, "-", "_")
 }
