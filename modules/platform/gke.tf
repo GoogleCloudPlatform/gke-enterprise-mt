@@ -1,3 +1,7 @@
+locals {
+  pod_security_policy_config = var.enable_pod_security_policy ? [{ enabled = true }] : [{ enabled = false }]
+}
+
 module "gke_cluster" {
   source                     = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
   version                    = "~> 7.3.0"
