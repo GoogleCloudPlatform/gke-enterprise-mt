@@ -1,3 +1,7 @@
+locals {
+  pod_security_policy_config = var.enable_pod_security_policy ? [{ enabled = true }] : [{ enabled = false }]
+}
+
 module "gke_cluster" {
   source                           = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
   version                          = "~> 7.3.0"
@@ -26,7 +30,7 @@ module "gke_cluster" {
   cluster_ipv4_cidr                = null  # To avoid conflict with ip_allocation_policy
   enable_intranode_visibility      = var.enable_intranode_visibility
 
-  pod_security_policy_config = [{ "enabled" = true }]
+  pod_security_policy_config = local.pod_security_policy_config
 
   master_authorized_networks = var.use_private_endpoints ? [
     {

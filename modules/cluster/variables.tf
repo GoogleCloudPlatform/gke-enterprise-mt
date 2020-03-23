@@ -90,3 +90,8 @@ variable "use_private_endpoints" {
   description = "Use private master endpoints"
   default     = true
 }
+
+variable "enable_pod_security_policy" {
+  description = "Enable pod security policy (PSP) for the cluster. Because PSP is not compatible with all standard containers, the default is off. We recommend that this be set true if possble, or some alternative security policy mechanism used."
+  default     = false
+}
