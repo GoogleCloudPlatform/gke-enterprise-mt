@@ -18,11 +18,6 @@ variable "service_project_number" {
   type        = string
 }
 
-variable "cluster_admin_group" {
-  description = "The gsuite cluster admin group"
-  type        = string
-}
-
 variable "gke_security_group" {
   description = "The gsuite gke security group"
   type        = string
