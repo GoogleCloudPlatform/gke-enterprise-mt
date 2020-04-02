@@ -13,21 +13,18 @@ breaking changes to be frequent. Fork this repo if you need some stability.
 
 ## Usage
 
-The [platform](modules/platform/README.md) terraform module deploys a shared VPC GKE
-private cluster with a bastion host as described in the best practices guide,
-including setting up service accounts. It assumes that host and service projects
-have already been set up, as well as the appropriate GCP folder structure.
+The [cluster](example/cluster/README.md) example deploys a shared VPC with two
+GKE private cluster with a bastion host as described in the best practices
+guide. It creates separate host and service projects as described in the best
+practices guide in provided GCP folders.
 
-The [tenant](modules/tenant/README.md) modules provisions a tenant, which
-currently just means provisioning a GCP folder and tenant project.
+The example is based on the [cluster](module/cluster/README.md) and
+[vpc](module/vpc/README.md) modules which can be mixed in with existing fleets.
 
-These two modules are suitable for mixing in to an existing deployment, for
-example if you already have an existing GCP folder structure.
-
-Functional examples are included in the [examples](./examples/) directory. In
-particular, these examples assume only a GCP organization and root folder in
-which to create the setup as described in the best practices guide. They are
-suitable for demos and probably could not be directly used for a real deployment.
+This blueprint does not set up organization folder structure or G Suite groups,
+beyond providing a hook for an existing security group. We have found that
+configuration depends quite a bit on existing account structure and so is
+difficult to provide canned scripts.
 
 ## Contributing
 

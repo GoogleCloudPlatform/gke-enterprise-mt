@@ -9,7 +9,7 @@ variable "network_name" {
 }
 
 variable "subnets" {
-  description = "List of subnets"
+  description = "List of subnets with pod a service secondary network CIDR ranges."
   type = list(object({
     name   = string
     ip     = string  // subnet CIDR
