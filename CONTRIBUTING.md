@@ -14,17 +14,6 @@ The following dependencies must be installed on the development system:
 - [Google Cloud SDK][google-cloud-sdk]
 - [make]
 
-## Generating Documentation for Inputs and Outputs
-
-The Inputs and Outputs tables in the READMEs of the root module,
-submodules, and example modules are automatically generated based on
-the `variables` and `outputs` of the respective modules. These tables
-must be refreshed if the module interfaces are changed.
-
-### Execution
-
-Run `make generate_docs` to generate new Inputs and Outputs tables.
-
 ## Integration Testing
 
 Integration tests are used to verify the behaviour of the root module,
@@ -64,10 +53,7 @@ You will also need to set a few environment variables:
 export TF_VAR_org_id="your_org_id"
 export TF_VAR_folder_id="your_folder_id"
 export TF_VAR_billing_account="your_billing_account_id"
-export TF_VAR_domain="domain.for.your.org.id"
 ```
-Note that the domain variable is one that is not required for other Cloud
-Foundation Toolkit modules.
 
 With these settings in place, you can prepare a test project using Docker:
 ```
@@ -85,14 +71,15 @@ noninteractively, using the prepared test project.
    interactive mode.
 
 1. Run `kitchen_do create <EXAMPLE_NAME>` to initialize the working
-   directory for an example module.
+   directory for an example module. `kitchen_do list` will show the
+   kitchen-specific names of testable modules.
 
 1. Run `kitchen_do converge <EXAMPLE_NAME>` to apply the example module.
 
 1. Run `kitchen_do verify <EXAMPLE_NAME>` to test the example module.
 
 1. Run `kitchen_do destroy <EXAMPLE_NAME>` to destroy the example module
-   state.
+   state. Note this does not work consistently due to VPC project liens.
 
 ## Linting and Formatting
 
