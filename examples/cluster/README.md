@@ -28,7 +28,7 @@ G Suite features, such as authenticator security groups, are not enabled.
   manage the parent folder, execute the following.
 ```
 gcloud iam service-accounts keys create --iam-account account@somedomain.com creds.json
-export GOOGLE_CREDENTIALS=$(< credentials.json)
+export GOOGLE_CREDENTIALS=$(< cred.json)
 ```
 
 ## Usage
