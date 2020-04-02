@@ -1,7 +1,6 @@
-#Module to create Network and Enabling SVPC Host Project for Production
-module "vpc_shared_net_prod" {
+module "vpc_shared_net" {
   source          = "terraform-google-modules/network/google"
-  version         = "~> 1.2.0"
+  version         = "~> 2.1.1"
   project_id      = var.host_project_id
   network_name    = var.network_name
   shared_vpc_host = "true"
