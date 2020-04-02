@@ -1,11 +1,17 @@
 # GKE Enterprise Multi-Tenancy Cluster Example.
 
 This example creates two private GKE clusters in a shared VPC following the
-enterprise multi-tenant best practices as appropriate.
+enterprise multi-tenant best practices as appropriate. The clusters are
+imaginatively named `x` and `y`.
 
 The VPC host project is created in the given network adminstrator folder, and
 the cluster service projects are created in the given cluster adminstrator
 folder.
+
+A string prefix to use with project names is also required. See
+[variables.tf](variables.tf) for details, as well as optional parameters such as
+the region. Some of these parameters are specific to the clusters and have `x`
+and `y` suffixes.
 
 G Suite features, such as authenticator security groups, are not enabled.
 
@@ -15,7 +21,7 @@ G Suite features, such as authenticator security groups, are not enabled.
   [organization](https://cloud.google.com/resource-manager/docs/quickstart-organizations)
   and assocaited billing account ready to go. If the account is new, be prepared
   to request higher quotas (which may require making a small payment).
-* Create a parent GCP folder. Everything will be created under this folder for
+* Create a parent [GCP folder](https://cloud.google.com/resource-manager/docs/creating-managing-folders). Everything will be created under this folder for
   easier management and separation from other GCP projects.
 * Export the following terraform variables (or use your favorite tfvars file),
   filling in the organization id, billing account, and a folder to hold all

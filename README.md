@@ -13,13 +13,13 @@ breaking changes to be frequent. Fork this repo if you need some stability.
 
 ## Usage
 
-The [cluster](example/cluster/README.md) example deploys a shared VPC with two
+The [cluster](examples/cluster/README.md) example deploys a shared VPC with two
 GKE private cluster with a bastion host as described in the best practices
 guide. It creates separate host and service projects as described in the best
 practices guide in provided GCP folders.
 
-The example is based on the [cluster](module/cluster/README.md) and
-[vpc](module/vpc/README.md) modules which can be mixed in with existing fleets.
+The example is based on the [cluster](modules/cluster/README.md) and
+[vpc](modules/vpc/README.md) modules which can be mixed in with existing fleets.
 
 This blueprint does not set up organization folder structure or G Suite groups,
 beyond providing a hook for an existing security group. We have found that
