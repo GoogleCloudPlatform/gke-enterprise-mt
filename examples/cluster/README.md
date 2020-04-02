@@ -9,11 +9,6 @@ folder.
 
 G Suite features, such as authenticator security groups, are not enabled.
 
-## Notes
-
-* Double-check no race with service activation. Wasn't that supposed to be
-  fixed? Or did I specify the wrong module version?  
-
 ## Prerequisites
 
 * Make sure you have an
