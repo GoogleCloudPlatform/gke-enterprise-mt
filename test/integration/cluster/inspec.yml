@@ -1,0 +1,33 @@
+name: cluster
+depends:
+  - name: inspec-gcp
+    git: https://github.com/inspec/inspec-gcp.git
+    tag: v0.10.0
+attributes:
+  - name: host_project_id
+    required: true
+    type: string
+  - name: service_x_project_id
+    required: true
+    type: string
+  - name: cluster_x_name
+    required: true
+    type: string
+  - name: region_x
+    required: true
+    type: string
+  - name: service_y_project_id
+    required: true
+    type: string
+  - name: cluster_y_name
+    required: true
+    type: string
+  - name: region_y
+    required: true
+    type: string
+  - name: shared_vpc_name
+    required: true
+    type: string
+  - name: subnets_names
+    required: true
+    type: array

@@ -25,15 +25,3 @@ output "organization_id" {
 output "billing_account" {
   value = var.billing_account
 }
-
-output "domain" {
-  value = var.domain
-}
-
-output "gsuite_admin_account" {
-  value = var.gsuite_admin_account
-}
-
-output "creds_path" {
-  value = var.creds_path
-}

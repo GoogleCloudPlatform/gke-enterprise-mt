@@ -27,14 +27,12 @@ platforms:
   - name: local
 
 suites:
-  - name: platform_basic
+  - name: cluster
     driver:
-      root_module_directory: test/fixtures/platform_basic
+      root_module_directory: test/fixtures/cluster
     verifier:
       systems:
-        - name: platform_basic
+        - name: cluster
           backend: gcp
           controls:
-            - vpc
             - gcloud
-            - vpc
