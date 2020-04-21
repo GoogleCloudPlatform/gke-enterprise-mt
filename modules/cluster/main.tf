@@ -35,7 +35,7 @@ module "gke_cluster" {
   master_authorized_networks = var.use_private_endpoints ? [
     {
       cidr_block   = var.master_authorized_networks
-      display_name = "bastion-host"
+      display_name = "api-server-access"
     },
   ] : []
 

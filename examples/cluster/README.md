@@ -33,6 +33,7 @@ G Suite features, such as authenticator security groups, are not enabled.
   Then create a service account in that project with the following roles.
   - `roles/resourcemanager.projectCreator`
   - `roles/billing.projectManager`
+  - `roles/resourcemanager.folderAdmin`
   Go into your billing account management and add the service account as a
   Billing Account Adminstrator (under Permissions in Account Management).
 * Export credentials for terraform to run under into `GOOGLE_CREDENTIALS`. For

@@ -23,6 +23,16 @@ variable "prefix" {
   type        = string
 }
 
+variable "master_x_authorized_network" {
+  description = "The CIDR range for the network that will be authorized to access cluster x"
+  type        = string
+}
+
+variable "master_y_authorized_network" {
+  description = "The CIDR range for the network that will be authorized to access cluster x"
+  type        = string
+}
+
 variable "region_x" {
   description = "The region used for cluster X"
   default     = "us-central1"
