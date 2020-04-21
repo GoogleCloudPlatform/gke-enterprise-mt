@@ -36,9 +36,6 @@ locals {
   subnets      = [ local.subnet_x, local.subnet_y ]
   master_x_ips = "10.31.0.0/28"
   master_y_ips = "10.32.0.0/28"
-
-  master_x_authorized_network = "10.31.0.0/16"
-  master_y_authorized_network = "10.32.0.0/16"
 }
 
 module "host_project" {
@@ -100,7 +97,7 @@ module "gke_x" {
   network_name           = module.shared_vpc.network_name
   subnet_name            = local.subnet_x.name
   master_ipv4_cidr_block = local.master_x_ips
-  master_authorized_networks = local.master_x_authorized_network
+  master_authorized_networks = var.master_x_authorized_network
   ip_range_pods          = module.shared_vpc.secondary_ranges[local.subnet_x.name].pod
   ip_range_services      = module.shared_vpc.secondary_ranges[local.subnet_x.name].svc
 }  
@@ -120,7 +117,7 @@ module "gke_y" {
   network_name           = local.shared_vpc_name
   subnet_name            = local.subnet_y.name
   master_ipv4_cidr_block = local.master_y_ips
-  master_authorized_networks = local.master_y_authorized_network
+  master_authorized_networks = var.master_y_authorized_network
   ip_range_pods          = module.shared_vpc.secondary_ranges[local.subnet_y.name].pod
   ip_range_services      = module.shared_vpc.secondary_ranges[local.subnet_y.name].svc
 }  

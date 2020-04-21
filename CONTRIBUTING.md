@@ -34,6 +34,10 @@ The easiest way to test the module is in an isolated test project. The setup for
 To use this setup, you need a service account with these permissions (on a Folder or Organization):
 - Project Creator
 - Project Billing Manager
+- Folder Admin
+The service account also needs to be Billing Account Adminstrator (from Billing
+Account Management > Permissions).
+
 
 The project that the service account belongs to must have the following APIs enabled (the setup won't
 create any resources on the service account's project):
@@ -41,6 +45,7 @@ create any resources on the service account's project):
 - Cloud Billing
 - Service Usage
 - Identity and Access Management (IAM)
+- Kubernetes Engine API
 
 Export the Service Account credentials to your environment like so:
 
@@ -53,6 +58,7 @@ You will also need to set a few environment variables:
 export TF_VAR_org_id="your_org_id"
 export TF_VAR_folder_id="your_folder_id"
 export TF_VAR_billing_account="your_billing_account_id"
+export TF_VAR_prefix="prefix-for-project-names"
 ```
 
 With these settings in place, you can prepare a test project using Docker:
