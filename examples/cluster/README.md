@@ -23,9 +23,21 @@ G Suite features, such as authenticator security groups, are not enabled.
   to request higher quotas (which may require making a small payment).
 * Create a parent [GCP folder](https://cloud.google.com/resource-manager/docs/creating-managing-folders). Everything will be created under this folder for
   easier management and separation from other GCP projects.
-* Export credentials for terraform to run under. For example, if you used a
-  service account `account@somedomain.com` with appropriate permissions to
-  manage the parent folder, execute the following.
+* If you need a service account to run terraform under, you may create a project
+  under this folder with the following APIs enabled.
+  - `cloudresourcemanager.googleapis.com`
+  - `cloudbilling.googleapis.com`
+  - `serviceusage.googleapis.com`
+  - `iam.googleapis.com`
+  - `container.googleapis.com`
+  Then create a service account in that project with the following roles.
+  - `roles/resourcemanager.projectCreator`
+  - `roles/billing.projectManager`
+  Go into your billing account management and add the service account as a
+  Billing Account Adminstrator (under Permissions in Account Management).
+* Export credentials for terraform to run under into `GOOGLE_CREDENTIALS`. For
+  example, if you used a service account `account@somedomain.com` with
+  appropriate permissions to manage the parent folder, execute the following.
 ```
 gcloud iam service-accounts keys create --iam-account account@somedomain.com creds.json
 export GOOGLE_CREDENTIALS=$(< cred.json)
@@ -39,7 +51,8 @@ export GOOGLE_CREDENTIALS=$(< cred.json)
 ```
 export TF_VAR_organization_id=<your organization id, eg 123456>
 export TF_VAR_billing_account=<your-billing-id, eg XXXXXX-YYYYYY-ZZZZZZ>
-export TF_VAR_folder_id=<your-folder-id, eg 123456>
+export TF_VAR_cluster_folder_id=<your-cluster-folder-id, eg 123456>
+export TF_VAR_network_folder_id=<your-network-folder-id, eg 123456>
 export TF_VAR_prefix=<prefix for your projects>
 ```
 * From this diredtory, run the standard terraform apply loop:
