@@ -44,8 +44,8 @@ module "gke_cluster" {
     {
       name               = "default-node-pool"
       machine_type       = "n1-standard-1"
-      min_count          = 1
-      max_count          = 2
+      min_count          = 0
+      max_count          = var.max_nodes
       disk_size_gb       = 100
       disk_type          = "pd-standard"
       image_type         = "COS_CONTAINERD"
