@@ -69,6 +69,11 @@ variable "master_authorized_networks" {
   type        = string
 }
 
+variable "max_nodes" {
+  description = "Maximum number of nodes to autoscale to"
+  default     = 5
+}
+
 variable "enable_intranode_visibility" {
   description = "Enable intranode visibility (usually for MCSD)"
   type        = bool
