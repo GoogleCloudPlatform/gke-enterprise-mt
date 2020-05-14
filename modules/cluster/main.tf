@@ -25,7 +25,7 @@ module "gke_cluster" {
   service_account                  = "create"
   resource_usage_export_dataset_id = module.gke_usage_meter_dataset.dataset_name
   authenticator_security_group     = var.gke_security_group
-  enable_vertical_pod_autoscaling  = true
+  enable_vertical_pod_autoscaling  = false
   remove_default_node_pool         = true
   cluster_ipv4_cidr                = null  # To avoid conflict with ip_allocation_policy
   enable_intranode_visibility      = var.enable_intranode_visibility
