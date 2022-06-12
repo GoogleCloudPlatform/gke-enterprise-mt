@@ -1,9 +1,9 @@
 provider "google" {
-  version = "3.82.0"
+  version = "~> 3.82.0"
 }
 
 provider "google-beta" {
-  version = "3.82.0"
+  version = "~> 3.82.0"
 }
 
 resource "random_id" "suffix" {
@@ -40,7 +40,7 @@ locals {
 
 module "host_project" {
   source                         = "terraform-google-modules/project-factory/google"
-  version                        = "11.1.1"
+  version                        = "~> 11.1.1"
   name                           = local.host_project_id
   org_id                         = var.organization_id
   folder_id                      = var.network_folder_id
@@ -52,8 +52,8 @@ module "host_project" {
 }
 
 module "service_x_project" {
-  source                  = "terraform-google-modules/project-factory/google//modules/shared_vpc"
-  version                 = "~> 7.0.0"
+  source                  = "terraform-google-modules/project-factory/google//modules/svpc_service_project"
+  version                 = "~> 11.1.1"
   name                    = local.service_x_project_id
   org_id                  = var.organization_id
   folder_id               = var.cluster_folder_id
@@ -64,8 +64,8 @@ module "service_x_project" {
 }
 
 module "service_y_project" {
-  source                  = "terraform-google-modules/project-factory/google//modules/shared_vpc"
-  version                 = "~> 7.0.0"
+  source                  = "terraform-google-modules/project-factory/google//modules/svpc_service_project"
+  version                 = "~> 11.1.1"
   name                    = local.service_y_project_id
   org_id                  = var.organization_id
   folder_id               = var.cluster_folder_id
