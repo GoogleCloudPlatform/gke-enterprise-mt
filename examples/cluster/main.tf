@@ -85,7 +85,8 @@ module "shared_vpc" {
 }
 
 module "gke_x" {
-  source = "../../modules/cluster/"
+  source     = "../../modules/cluster/"
+  depends_on = [module.shared_vpc, module.service_x_project, module.host_project]
 
   prefix                 = var.prefix
   host_project_id        = module.host_project.project_id
@@ -105,8 +106,8 @@ module "gke_x" {
 }
 
 module "gke_y" {
-  source = "../../modules/cluster/"
-
+  source                 = "../../modules/cluster/"
+  depends_on             = [module.shared_vpc, module.service_y_project, module.host_project]
   prefix                 = var.prefix
   host_project_id        = module.host_project.project_id
   service_project_id     = module.service_y_project.project_id
