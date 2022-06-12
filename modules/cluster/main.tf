@@ -1,10 +1,6 @@
-locals {
-  pod_security_policy_config = var.enable_pod_security_policy ? [{ enabled = true }] : [{ enabled = false }]
-}
-
 module "gke_cluster" {
   source                           = "terraform-google-modules/kubernetes-engine/google//modules/beta-private-cluster"
-  version                          = "~> 7.3.0"
+  version                          = "~> 16.1.0"
   project_id                       = var.service_project_id
   name                             = var.cluster_name
   region                           = var.region
@@ -27,10 +23,14 @@ module "gke_cluster" {
   authenticator_security_group     = var.gke_security_group
   enable_vertical_pod_autoscaling  = false
   remove_default_node_pool         = true
-  cluster_ipv4_cidr                = null  # To avoid conflict with ip_allocation_policy
+  cluster_ipv4_cidr                = null # To avoid conflict with ip_allocation_policy
   enable_intranode_visibility      = var.enable_intranode_visibility
 
-  pod_security_policy_config = local.pod_security_policy_config
+  enable_pod_security_policy = var.enable_pod_security_policy
+
+  istio = true
+  # cloudrun  = true
+  dns_cache = false
 
   master_authorized_networks = var.use_private_endpoints ? [
     {
@@ -43,12 +43,12 @@ module "gke_cluster" {
   node_pools = [
     {
       name               = "default-node-pool"
-      machine_type       = "n1-standard-1"
+      machine_type       = "e2-medium"
       min_count          = 0
       max_count          = var.max_nodes
       disk_size_gb       = 100
       disk_type          = "pd-standard"
-      image_type         = "COS_CONTAINERD"
+      image_type         = "COS"
       auto_repair        = true
       auto_upgrade       = true
       preemptible        = false
@@ -87,7 +87,7 @@ module "gke_cluster" {
     all = []
 
     default-node-pool = [
-     "default-node-pool",
+      "default-node-pool",
     ]
   }
 }

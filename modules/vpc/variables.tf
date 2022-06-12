@@ -12,10 +12,10 @@ variable "subnets" {
   description = "List of subnets with pod a service secondary network CIDR ranges."
   type = list(object({
     name   = string
-    ip     = string  // subnet CIDR
+    ip     = string // subnet CIDR
     region = string
-    pod    = string  // pod secondary network CIDR
-    svc    = string  // service secondary network CIDR
+    pod    = string // pod secondary network CIDR
+    svc    = string // service secondary network CIDR
   }))
 }
 
