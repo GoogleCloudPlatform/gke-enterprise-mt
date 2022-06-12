@@ -30,8 +30,8 @@ variable "region" {
 }
 
 variable "zones" {
-  type        = list(string)
-  default     = ["us-central1-a", "us-central1-b", "us-central1-f"]
+  type    = list(string)
+  default = ["us-central1-a", "us-central1-b", "us-central1-f"]
 }
 
 variable "cluster_name" {
@@ -83,7 +83,7 @@ variable "enable_intranode_visibility" {
 variable "dataset_labels" {
   description = "Usage metering bigquery dataset labels"
   type        = map(string)
-  default     = {env = "prod"}
+  default     = { env = "prod" }
 }
 
 variable "use_private_endpoints" {
