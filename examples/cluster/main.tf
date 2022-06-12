@@ -1,9 +1,9 @@
 provider "google" {
-  version = "~> 3.82.0"
+  version = "3.82.0"
 }
 
 provider "google-beta" {
-  version = "~> 3.82.0"
+  version = "3.82.0"
 }
 
 resource "random_id" "suffix" {
@@ -39,14 +39,16 @@ locals {
 }
 
 module "host_project" {
-  source                  = "terraform-google-modules/project-factory/google"
-  version                 = "~> 7.0.0"
-  name                    = local.host_project_id
-  org_id                  = var.organization_id
-  folder_id               = var.network_folder_id
-  billing_account         = var.billing_account
-  default_service_account = "keep"
-  activate_apis           = ["compute.googleapis.com", "container.googleapis.com"]
+  source                         = "terraform-google-modules/project-factory/google"
+  version                        = "11.1.1"
+  name                           = local.host_project_id
+  org_id                         = var.organization_id
+  folder_id                      = var.network_folder_id
+  billing_account                = var.billing_account
+  lien                           = false
+  enable_shared_vpc_host_project = true
+  default_service_account        = "keep"
+  activate_apis                  = ["compute.googleapis.com", "container.googleapis.com"]
 }
 
 module "service_x_project" {
