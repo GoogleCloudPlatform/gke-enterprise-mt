@@ -56,7 +56,7 @@ export TF_VAR_cluster_folder_id=<your-cluster-folder-id, eg 123456>
 export TF_VAR_network_folder_id=<your-network-folder-id, eg 123456>
 export TF_VAR_prefix=<prefix for your projects>
 ```
-* From this diredtory, run the standard terraform apply loop:
+* From this directory, run the standard terraform apply loop:
 ```
 terraform init
 terraform plan
