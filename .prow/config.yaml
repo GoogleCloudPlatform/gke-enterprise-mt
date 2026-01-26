@@ -1,0 +1,37 @@
+presubmits:
+  - name: pull-gke-enterprise-mt-build
+    decorate: true
+    always_run: true
+    spec:
+      containers:
+      - image: golang:1.25
+        command:
+        - make
+        - build
+  - name: pull-gke-enterprise-mt-test
+    decorate: true
+    always_run: true
+    spec:
+      containers:
+      - image: golang:1.25
+        command:
+        - make
+        - test
+
+postsubmits:
+  - name: post-gke-enterprise-mt-build
+    decorate: true
+    spec:
+      containers:
+      - image: golang:1.25
+        command:
+        - make
+        - build
+  - name: post-gke-enterprise-mt-test
+    decorate: true
+    spec:
+      containers:
+      - image: golang:1.25
+        command:
+        - make
+        - test
