@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1"
+	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	crv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

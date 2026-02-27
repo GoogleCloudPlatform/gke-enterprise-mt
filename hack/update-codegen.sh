@@ -54,14 +54,14 @@ echo "Performing code generation for ProviderConfig CRD"
 cd "${REPO_ROOT}"
 "${CODEGEN_PKG}"/generate-groups.sh \
   "deepcopy,client,informer,lister" \
-  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/apis \
+  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
   "providerconfig:v1" \
   --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
 
 echo "Generating openapi for ProviderConfig v1"
 "${OPENAPI_PKG}"/openapi-gen \
   --output-file zz_generated.openapi.go \
-  --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1 \
-  --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1" \
+  --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1 \
+  --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1" \
   --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
-  github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1
+  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1

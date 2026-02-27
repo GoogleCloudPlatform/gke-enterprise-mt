@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1"
+	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/util/retry"

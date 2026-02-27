@@ -28,8 +28,8 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfig":     schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref),
-		"github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfigSpec": schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref),
+		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfig":     schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref),
+		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigSpec": schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref),
 	}
 }
 
@@ -63,20 +63,20 @@ func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref common.R
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfigSpec"),
+							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfigStatus"),
+							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfigSpec", "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderConfigStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigSpec", "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
@@ -114,19 +114,19 @@ func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref comm
 					"networkConfig": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderNetworkConfig"),
+							Ref:     ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderNetworkConfig"),
 						},
 					},
 					"authSpec": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AuthConfig specifies the configuration for controllers to obtain an authentication token.",
-							Ref:         ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.AuthConfig"),
+							Ref:         ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.AuthConfig"),
 						},
 					},
 					"principalInfo": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PrincipalInfo contains information about the principal entity associated with this configuration. This field is optional.",
-							Ref:         ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.PrincipalInfo"),
+							Ref:         ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.PrincipalInfo"),
 						},
 					},
 				},
@@ -134,6 +134,6 @@ func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.AuthConfig", "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.PrincipalInfo", "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1.ProviderNetworkConfig"},
+			"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.AuthConfig", "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.PrincipalInfo", "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderNetworkConfig"},
 	}
 }
