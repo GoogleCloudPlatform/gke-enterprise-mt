@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1"
+	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	"github.com/google/go-cmp/cmp"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

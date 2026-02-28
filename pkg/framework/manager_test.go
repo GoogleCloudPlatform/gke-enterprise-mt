@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1"
+	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	crv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr" // implicitly needed if used or for consistency
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

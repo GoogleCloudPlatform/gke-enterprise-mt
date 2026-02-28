@@ -12,7 +12,7 @@ import (
 	"math/rand"
 	"runtime/debug"
 
-	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1"
+	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext"
 	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue"
 	crv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr"
@@ -129,7 +129,7 @@ func (c *Controller) syncWrapper(ctx context.Context, key string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-	ctxErrorf(ctx, "panic in ProviderConfig sync worker goroutine: %v, stack: %s, syncId: %d", r, stack, syncID)
+			ctxErrorf(ctx, "panic in ProviderConfig sync worker goroutine: %v, stack: %s, syncId: %d", r, stack, syncID)
 			err = fmt.Errorf("panic in sync worker: %v", r)
 		}
 	}()
@@ -158,7 +158,7 @@ func (c *Controller) sync(ctx context.Context, key string, syncID int32) error {
 	// Populate tenant context
 	ctx = mtcontext.ContextWithTenantUID(ctx, pc.Name)
 	logger := klog.FromContext(ctx).WithValues("tenantUID", pc.Name)
-  ctx = klog.NewContext(ctx, logger)
+	ctx = klog.NewContext(ctx, logger)
 
 	if pc.DeletionTimestamp != nil {
 		ctxInfo(ctx, "ProviderConfig is being deleted, stopping controllers", "providerConfig", pc, "syncId", syncID)
