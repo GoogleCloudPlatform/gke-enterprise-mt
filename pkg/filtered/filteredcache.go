@@ -5,11 +5,14 @@ Copyright 2026 The Kubernetes Authors.
 package filtered
 
 import (
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
 // FilteredCache implements cache.Store and cache.Indexer with custom filtering.
+// It wraps the standard cache.Indexer and filters the results based on the filterKey and filterValue.
+// if allowMissing is true, it will allow objects that do not have the filterKey.
 type FilteredCache struct {
 	cache.Indexer
 	filterKey    string
@@ -68,4 +71,27 @@ func (obj *FilteredCache) GetByKey(key string) (item interface{}, exists bool, e
 		return item, true, nil
 	}
 	return nil, false, nil
+}
+
+// isObjectMatchingValue checks if an object matches to the specific value.
+// If allowMissing is true, objects without the required label are also considered as belonging to the specific value.
+func isObjectMatchingValue(obj interface{}, filterKey, filterValue string, allowMissing bool) bool {
+	metaObj, err := meta.Accessor(obj)
+	if err != nil {
+		klog.Errorf("isObjectMatchingValue: failed to get meta accessor for object %v: %v", obj, err)
+		return false
+	}
+	val, ok := metaObj.GetLabels()[filterKey]
+	return MatchValue(val, ok, filterValue, allowMissing)
+}
+
+// getFilteredListByValue filters a list of objects by the filter key and value.
+func getFilteredListByValue(items []interface{}, filterKey, filterValue string, allowMissing bool) []interface{} {
+	var filtered []interface{}
+	for _, item := range items {
+		if isObjectMatchingValue(item, filterKey, filterValue, allowMissing) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }

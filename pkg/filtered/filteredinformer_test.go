@@ -17,6 +17,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+const providerConfigLabelKey = "tenancy.gke.io/provider-config"
+
 func TestFilteredInformer_AddEventHandler(t *testing.T) {
 	tests := []struct {
 		name          string

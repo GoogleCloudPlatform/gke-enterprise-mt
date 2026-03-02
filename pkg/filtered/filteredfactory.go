@@ -25,6 +25,9 @@ import (
 // FilteredSharedInformerFactory wraps the standard factory.
 // It embeds the interface so all non-overridden methods (Start, WaitForCacheSync)
 // pass through to the underlying factory automatically.
+// filterKey is the label key to filter on.
+// filterValue is the label value to filter on.
+// allowMissing true means objects without the filterKey will be allowed.
 // WARNING: For now this only overrides Core() and Coordination() informers specifically for Nodes and Leases.
 // For others, it just returns the underlying factory. We will be adding more informers soon.
 type FilteredSharedInformerFactory struct {
@@ -46,12 +49,19 @@ func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, ke
 	}
 }
 
+// RegisterInformer is a custom function to FilteredSharedInformerFactory.
+// It is called internally when a new FilteredInformer wrapper is created
+// to keep track of it within the factory. This ensures that the factory can
+// call Cleanup() on all registered wrappers when the tenant is deleted.
 func (f *FilteredSharedInformerFactory) RegisterInformer(inf *FilteredInformer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.informers = append(f.informers, inf)
 }
 
+// Cleanup is a custom function to FilteredSharedInformerFactory. 
+// It is needed to handle our very specific multi-tenant requirement of cleanly 
+// unregistering handlers without shutting down the global cache.
 func (f *FilteredSharedInformerFactory) Cleanup() {
 	f.mu.Lock()
 	defer f.mu.Unlock()

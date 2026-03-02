@@ -17,7 +17,8 @@ type FilteredInformer struct {
 	filterKey     string
 	filterValue   string
 	allowMissing  bool
-	// registrations is needed here to clean up the filtered handlers on Cleanup
+	// This is needed because the filtered handlers are added to the parent informer and need to be removed when the tenant is deleted.
+	// Parent informer doesn't know about the filtered handlers for that tenant.
 	registrations []cache.ResourceEventHandlerRegistration
 }
 
@@ -52,6 +53,9 @@ func (f *FilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.Resourc
 	return reg, err
 }
 
+// Cleanup is a custom function to FilteredInformer. 
+// It is needed to handle our very specific multi-tenant requirement of cleanly 
+// unregistering handlers when a tenant shuts down without shutting down the global cache.
 func (f *FilteredInformer) Cleanup() {
 	for _, reg := range f.registrations {
 		_ = f.SharedIndexInformer.RemoveEventHandler(reg)
@@ -59,6 +63,9 @@ func (f *FilteredInformer) Cleanup() {
 	f.registrations = nil
 }
 
+// FilterFunc is a custom function to FilteredInformer.
+// It contains the core logic to determine if a given Kubernetes object (e.g. Node, Lease)
+// belongs to the tenant by checking its labels against the configured filterKey and filterValue.
 func (f *FilteredInformer) FilterFunc(obj interface{}) bool {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
