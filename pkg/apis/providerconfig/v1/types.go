@@ -59,6 +59,8 @@ type ProviderConfigSpec struct {
 	// PrincipalInfo contains information about the principal entity associated with this configuration.
 	// This field is optional.
 	PrincipalInfo *PrincipalInfo `json:"principalInfo"`
+	// TestField is a dummy field for testing codegen.
+	TestField string `json:"testField,omitempty"`
 }
 
 // ProviderNetworkConfig specifies the network configuration for the provider config.

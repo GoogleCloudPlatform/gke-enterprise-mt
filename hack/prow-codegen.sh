@@ -25,7 +25,7 @@ echo "Detected changes after codegen/tidy."
 
 # In Prow, PULL_HEAD_REF is the source branch.
 # If it is copybara-sync, we try to push back.
-if [[ "${PULL_HEAD_REF:-}" == "copybara-sync" ]]; then
+if [[ "${PULL_HEAD_REF:-}" == "test-prow-push" ]]; then
   echo "PR is from copybara-sync. Attempting to push changes back..."
   
   git config user.name "GKE MT Prow Robot"
