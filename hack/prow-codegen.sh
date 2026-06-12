@@ -10,7 +10,7 @@ REPO_ROOT=$(cd "${SCRIPT_ROOT}/.." && pwd)
 cd "${REPO_ROOT}"
 
 # Run codegen
-./hack/update-codegen.sh
+bash ./hack/update-codegen.sh
 
 # Run tidy
 go mod tidy
