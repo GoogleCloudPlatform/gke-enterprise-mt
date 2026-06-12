@@ -23,7 +23,12 @@ fi
 
 echo "Detected changes after codegen/tidy."
 
-echo "PULL_HEAD_REF is: '${PULL_HEAD_REF:-}'"
+echo "--- Git Config ---"
+git config -l
+echo "------------------"
+echo "GITHUB_TOKEN is: ${GITHUB_TOKEN:+SET (not showing value)}"
+echo "GH_TOKEN is: ${GH_TOKEN:+SET (not showing value)}"
+echo "------------------"
 
 if [[ "${PULL_HEAD_REF:-}" == "test-prow-push" ]]; then
   echo "PR is from copybara-sync. Attempting to push changes back..."
