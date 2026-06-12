@@ -17,6 +17,14 @@ presubmits:
         command:
         - make
         - test
+  - name: pull-gke-enterprise-mt-codegen
+    decorate: true
+    always_run: true
+    spec:
+      containers:
+      - image: golang:1.25
+        command:
+        - ./hack/prow-codegen.sh
 
 postsubmits:
   - name: post-gke-enterprise-mt-build

@@ -55,13 +55,28 @@ cd "${REPO_ROOT}"
 "${CODEGEN_PKG}"/generate-groups.sh \
   "deepcopy,client,informer,lister" \
   github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
-  "providerconfig:v1" \
+  "providerconfig:v1_kubernetes_apis" \
   --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
 
-echo "Generating openapi for ProviderConfig v1"
+echo "Generating openapi for ProviderConfig v1_kubernetes_apis"
 "${OPENAPI_PKG}"/openapi-gen \
   --output-file zz_generated.openapi.go \
-  --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1 \
-  --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1" \
+  --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis \
+  --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis" \
   --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
-  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1
+  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis
+
+echo "Performing code generation for Tenant CRD"
+"${CODEGEN_PKG}"/generate-groups.sh \
+  "deepcopy,client,informer,lister" \
+  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/tenant/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
+  "tenant:v1_kubernetes_apis" \
+  --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
+
+echo "Generating openapi for Tenant v1_kubernetes_apis"
+"${OPENAPI_PKG}"/openapi-gen \
+  --output-file zz_generated.openapi.go \
+  --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis \
+  --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis" \
+  --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
+  github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis
