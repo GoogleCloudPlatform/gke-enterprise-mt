@@ -24,6 +24,7 @@ presubmits:
       containers:
       - image: golang:1.25
         command:
+        - bash
         - ./hack/prow-codegen.sh
 
 postsubmits:
