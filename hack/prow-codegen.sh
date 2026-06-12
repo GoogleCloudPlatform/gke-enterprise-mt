@@ -23,8 +23,8 @@ fi
 
 echo "Detected changes after codegen/tidy."
 
-# In Prow, PULL_HEAD_REF is the source branch.
-# If it is copybara-sync, we try to push back.
+echo "PULL_HEAD_REF is: '${PULL_HEAD_REF:-}'"
+
 if [[ "${PULL_HEAD_REF:-}" == "test-prow-push" ]]; then
   echo "PR is from copybara-sync. Attempting to push changes back..."
   
