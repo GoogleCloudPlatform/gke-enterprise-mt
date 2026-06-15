@@ -22,8 +22,12 @@ REPO_ROOT=$(cd "${SCRIPT_ROOT}/.." && pwd)
 
 export GOBIN="${SCRIPT_ROOT}/tools/bin"
 export PATH="${GOBIN}:${PATH}"
-GOPATH="$(go env GOPATH)"
+GOPATH="$(mktemp -d)"
 export GOPATH
+trap 'chmod -R +w "${GOPATH}" && rm -rf "${GOPATH}"' EXIT
+
+mkdir -p "${GOPATH}/src/github.com/GoogleCloudPlatform"
+ln -s "${REPO_ROOT}" "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt"
 
 echo "Using following variables for code generation:"
 echo ""
