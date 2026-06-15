@@ -28,12 +28,12 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfig":     schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref),
-		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigSpec": schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref),
+		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfig":     schema_pkg_apis_providerconfig_v1_ProviderConfig(ref),
+		"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.ProviderConfigSpec": schema_pkg_apis_providerconfig_v1_ProviderConfigSpec(ref),
 	}
 }
 
-func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_pkg_apis_providerconfig_v1_ProviderConfig(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -80,7 +80,7 @@ func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfig(ref common.R
 	}
 }
 
-func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_pkg_apis_providerconfig_v1_ProviderConfigSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -127,6 +127,13 @@ func schema_gke_enterprise_mt_apis_providerconfig_v1_ProviderConfigSpec(ref comm
 						SchemaProps: spec.SchemaProps{
 							Description: "PrincipalInfo contains information about the principal entity associated with this configuration. This field is optional.",
 							Ref:         ref("github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1.PrincipalInfo"),
+						},
+					},
+					"testField": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TestField is a dummy field for testing codegen.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},

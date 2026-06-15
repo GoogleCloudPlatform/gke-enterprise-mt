@@ -22,8 +22,12 @@ REPO_ROOT=$(cd "${SCRIPT_ROOT}/.." && pwd)
 
 export GOBIN="${SCRIPT_ROOT}/tools/bin"
 export PATH="${GOBIN}:${PATH}"
-GOPATH="$(go env GOPATH)"
+GOPATH="$(mktemp -d)"
 export GOPATH
+trap 'rm -rf "${GOPATH}"' EXIT
+
+mkdir -p "${GOPATH}/src/github.com/GoogleCloudPlatform"
+ln -s "${REPO_ROOT}" "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt"
 
 echo "Using following variables for code generation:"
 echo ""
@@ -53,7 +57,7 @@ CODEGEN_PKG="${PWD}"
 echo "Performing code generation for ProviderConfig CRD"
 cd "${REPO_ROOT}"
 "${CODEGEN_PKG}"/generate-groups.sh \
-  "deepcopy,client,informer,lister" \
+  "deepcopy" \
   github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
   "providerconfig:v1" \
   --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
