@@ -24,7 +24,7 @@ export GOBIN="${SCRIPT_ROOT}/tools/bin"
 export PATH="${GOBIN}:${PATH}"
 GOPATH="$(mktemp -d)"
 export GOPATH
-trap 'rm -rf "${GOPATH}"' EXIT
+trap 'chmod -R +w "${GOPATH}" && rm -rf "${GOPATH}"' EXIT
 
 mkdir -p "${GOPATH}/src/github.com/GoogleCloudPlatform"
 ln -s "${REPO_ROOT}" "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt"
