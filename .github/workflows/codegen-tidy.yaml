@@ -49,9 +49,16 @@ jobs:
 
       - name: Commit and Push Changes (Auto-commit Mode)
         if: steps.determine_action.outputs.mode == 'push'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Auto-generate code and tidy modules [skip ci]"
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "Auto-generate code and tidy modules [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
 
       - name: Verify Changes (Verify Mode)
         if: steps.determine_action.outputs.mode == 'verify'
