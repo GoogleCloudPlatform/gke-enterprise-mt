@@ -32,9 +32,10 @@ jobs:
         run: |
           bash hack/update-codegen.sh
 
-      - name: Run Go Mod Tidy
+      - name: Run Go Mod Tidy and Vendor
         run: |
           go mod tidy
+          go mod vendor
 
       - name: Determine Action
         id: determine_action
