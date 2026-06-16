@@ -51,7 +51,7 @@ cd "${GOBIN}"
 rm -rf code-generator
 git clone https://github.com/kubernetes/code-generator --quiet
 cd code-generator
-git checkout 9c63990c847dce9e6dca44ad39f7cc4e547bd55f --quiet # https://github.com/kubernetes/code-generator/releases/tag/v0.22.17
+git checkout 305c555d2838b80c72046125e4e0074a5fbbe72d --quiet # https://github.com/kubernetes/code-generator/releases/tag/v0.27.16
 CODEGEN_PKG="${PWD}"
 
 if [ -d "${REPO_ROOT}/pkg/apis/providerconfig/v1_kubernetes_apis" ]; then
