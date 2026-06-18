@@ -53,16 +53,39 @@ func TestPeriodicQueueWithMultipleWorkers(t *testing.T) {
 				tq.Enqueue(cache.ExplicitKey(obj))
 			}
 
-			for tq.Len() > 0 {
-				time.Sleep(1 * time.Second)
+			// Wait for all input keys to be synced at least once.
+			// This ensures workers have started processing them.
+			success := false
+			for i := 0; i < 50; i++ { // 5 seconds max
+				allSynced := true
+				for _, key := range tc.inputObjs {
+					if _, ok := synced.Load(key); !ok {
+						allSynced = false
+						break
+					}
+				}
+				if allSynced {
+					success = true
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !success {
+				t.Errorf("Timed out waiting for all keys to be synced")
 			}
 
 			if tc.expectRequeueForKey != "" {
-				if tq.queue.NumRequeues(tc.expectRequeueForKey) == 0 {
-					t.Errorf("Got 0 requeues for %q, expected non-zero requeue on error", tc.expectRequeueForKey)
+				// Wait for the error key to be requeued (this happens after sync returns error).
+				requeued := false
+				for i := 0; i < 50; i++ { // 5 seconds max
+					if tq.NumRequeues(cache.ExplicitKey(tc.expectRequeueForKey)) > 0 {
+						requeued = true
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
-				if tq.NumRequeues(cache.ExplicitKey(tc.expectRequeueForKey)) == 0 {
-					t.Errorf("NumRequeues(%q) returned 0, expected non-zero requeue on error", tc.expectRequeueForKey)
+				if !requeued {
+					t.Errorf("Got 0 requeues for %q, expected non-zero requeue on error", tc.expectRequeueForKey)
 				}
 			}
 			tq.Shutdown()
