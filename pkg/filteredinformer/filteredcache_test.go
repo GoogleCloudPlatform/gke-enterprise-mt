@@ -6,9 +6,9 @@ import (
 	"sort"
 	"testing"
 
-	"google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/api/meta/meta"
-	"google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/apis/meta/v1/v1"
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/tools/cache/cache"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {

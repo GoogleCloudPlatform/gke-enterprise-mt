@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/informers"
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/kubernetes/fake/fake"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestNewFilteredSharedInformerFactory(t *testing.T) {

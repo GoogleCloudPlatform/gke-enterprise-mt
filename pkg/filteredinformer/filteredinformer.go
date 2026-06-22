@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/tools/cache/cache"
+	"k8s.io/client-go/tools/cache"
 )
 
 // ProviderConfigFilteredInformer wraps a SharedIndexInformer to provide a filtered view.

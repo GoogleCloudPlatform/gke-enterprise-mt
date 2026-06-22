@@ -1,7 +1,7 @@
 package filteredinformer
 
 import (
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/tools/cache/cache"
+	"k8s.io/client-go/tools/cache"
 )
 
 // providerConfigFilteredCache implements cache.Store and cache.Indexer with custom filtering.

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	corev1 "google3/third_party/golang/k8s_io/api/v/v0_23/core/v1/v1"
-	metav1 "google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/apis/meta/v1/v1"
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/tools/cache/cache"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 // TestNewProviderConfigFilteredInformer verifies that NewProviderConfigFilteredInformer
@@ -172,20 +172,20 @@ func TestProviderConfigFilteredInformer_EventHandlerFiltering(t *testing.T) {
 		{
 			desc: "OnAdd with matching object",
 			event: func(h cache.ResourceEventHandler) {
-				h.OnAdd(matchingObj)
+				h.OnAdd(matchingObj, false)
 			},
 			expectedAddCalls: 1,
 		},
 		{
 			desc: "OnAdd with non-matching object",
 			event: func(h cache.ResourceEventHandler) {
-				h.OnAdd(nonMatchingObj)
+				h.OnAdd(nonMatchingObj, false)
 			},
 		},
 		{
 			desc: "OnAdd with object without label",
 			event: func(h cache.ResourceEventHandler) {
-				h.OnAdd(objWithoutLabel)
+				h.OnAdd(objWithoutLabel, false)
 			},
 		},
 		{
@@ -284,7 +284,7 @@ func TestProviderConfigFilteredInformer_RemoveEventHandlers(t *testing.T) {
 	informer.AddEventHandler(mockHandler)
 
 	// Events should be received before stop.
-	fake.handler.OnAdd(matchingObj)
+	fake.handler.OnAdd(matchingObj, false)
 	if mockHandler.addCalls != 1 {
 		t.Fatalf("OnAdd calls before stop: got %d, want 1", mockHandler.addCalls)
 	}
@@ -293,7 +293,7 @@ func TestProviderConfigFilteredInformer_RemoveEventHandlers(t *testing.T) {
 	informer.(*ProviderConfigFilteredInformer).RemoveEventHandlers()
 
 	// Events should not be received after stop.
-	fake.handler.OnAdd(matchingObj)
+	fake.handler.OnAdd(matchingObj, false)
 	if mockHandler.addCalls != 1 {
 		t.Errorf("OnAdd call count after stop: got %d, want 1 (no new events should be received)", mockHandler.addCalls)
 	}

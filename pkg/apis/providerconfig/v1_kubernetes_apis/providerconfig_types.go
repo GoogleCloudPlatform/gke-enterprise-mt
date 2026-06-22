@@ -1,4 +1,4 @@
-package v1
+package v1_kubernetes_apis
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -8,7 +8,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
-// +k8s:deepcopy-gen:interfaces=google3/third_party/kubernetes_apis/k8s_io/apimachinery/pkg/runtime/runtime.Object
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ProviderConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -20,7 +20,7 @@ type ProviderConfig struct {
 // ProviderConfigList contains a list of ProviderConfigs.
 //
 // +kubebuilder:object:root=true
-// +k8s:deepcopy-gen:interfaces=google3/third_party/kubernetes_apis/k8s_io/apimachinery/pkg/runtime/runtime.Object
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ProviderConfigList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

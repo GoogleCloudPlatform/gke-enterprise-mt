@@ -2,4 +2,4 @@
 // +kubebuilder:object:generate=true
 // +k8s:deepcopy-gen=package
 // +groupName=cloud.gke.io
-package v1
+package v1_kubernetes_apis

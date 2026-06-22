@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	meta "google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/api/meta/meta"
-	metav1 "google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/apis/meta/v1/v1"
-	"google3/third_party/golang/k8s_io/apimachinery/v/v0_23/pkg/runtime/runtime"
+	meta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func TestIsObjectMatchingValue(t *testing.T) {

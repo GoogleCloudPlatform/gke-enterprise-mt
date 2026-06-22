@@ -3,14 +3,14 @@ package filteredinformer
 import (
 	"sync"
 
-	coordinationinformers "google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/coordination/coordination"
-	coordinationv1 "google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/coordination/v1/v1"
-	coreinformers "google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/core/core"
-	corev1 "google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/core/v1/v1"
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/informers/informers"
-	coordinationv1listers "google3/third_party/golang/k8s_io/client_go/v/v0_23/listers/coordination/v1/v1"
-	v1listers "google3/third_party/golang/k8s_io/client_go/v/v0_23/listers/core/v1/v1"
-	"google3/third_party/golang/k8s_io/client_go/v/v0_23/tools/cache/cache"
+	coordinationinformers "k8s.io/client-go/informers/coordination"
+	coordinationv1 "k8s.io/client-go/informers/coordination/v1"
+	coreinformers "k8s.io/client-go/informers/core"
+	corev1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/informers"
+	coordinationv1listers "k8s.io/client-go/listers/coordination/v1"
+	v1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 // FilteredSharedInformerFactory wraps the standard factory.
