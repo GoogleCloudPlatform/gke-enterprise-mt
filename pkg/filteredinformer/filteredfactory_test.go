@@ -1,14 +1,9 @@
-/*
-Copyright 2026 The Kubernetes Authors.
-*/
-
-package filtered
+package filteredinformer
 
 import (
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -22,11 +17,21 @@ func TestNewFilteredSharedInformerFactory(t *testing.T) {
 
 	factory := NewFilteredSharedInformerFactory(parentFactory, filterKey, filterValue, allowMissing)
 
-	assert.NotNil(t, factory)
-	assert.Equal(t, filterKey, factory.filterKey)
-	assert.Equal(t, filterValue, factory.filterValue)
-	assert.Equal(t, allowMissing, factory.allowMissing)
-	assert.Equal(t, parentFactory, factory.SharedInformerFactory)
+	if factory == nil {
+		t.Fatal("Expected factory to be non-nil")
+	}
+	if factory.filterKey != filterKey {
+		t.Errorf("Expected filterKey %q, got %q", filterKey, factory.filterKey)
+	}
+	if factory.filterValue != filterValue {
+		t.Errorf("Expected filterValue %q, got %q", filterValue, factory.filterValue)
+	}
+	if factory.allowMissing != allowMissing {
+		t.Errorf("Expected allowMissing %t, got %t", allowMissing, factory.allowMissing)
+	}
+	if factory.SharedInformerFactory != parentFactory {
+		t.Errorf("Expected SharedInformerFactory %p, got %p", parentFactory, factory.SharedInformerFactory)
+	}
 }
 
 func TestFilteredSharedInformerFactory_Core_Nodes(t *testing.T) {
@@ -38,21 +43,29 @@ func TestFilteredSharedInformerFactory_Core_Nodes(t *testing.T) {
 	factory := NewFilteredSharedInformerFactory(parentFactory, filterKey, filterValue, allowMissing)
 
 	nodeInformer := factory.Core().V1().Nodes()
-	assert.NotNil(t, nodeInformer)
+	if nodeInformer == nil {
+		t.Fatal("Expected nodeInformer to be non-nil")
+	}
 
-	// Verify it's a filtered informer by checking the type or properties if possible.
-	// Since FilteredNodeInformer is exported, we can check the type.
 	_, ok := nodeInformer.(*FilteredNodeInformer)
-	assert.True(t, ok, "Expected nodeInformer to be of type *FilteredNodeInformer")
+	if !ok {
+		t.Errorf("Expected nodeInformer to be of type *FilteredNodeInformer, got %T", nodeInformer)
+	}
 
-	// Trigger Informer creation to check internal properties
 	sharedInformer := nodeInformer.Informer()
-	filteredInf, ok := sharedInformer.(*FilteredInformer)
-	assert.True(t, ok, "Expected sharedInformer to be of type *FilteredInformer")
-	if ok {
-		assert.Equal(t, filterKey, filteredInf.filterKey)
-		assert.Equal(t, filterValue, filteredInf.filterValue)
-		assert.Equal(t, allowMissing, filteredInf.allowMissing)
+	filteredInf, ok := sharedInformer.(*ProviderConfigFilteredInformer)
+	if !ok {
+		t.Errorf("Expected sharedInformer to be of type *ProviderConfigFilteredInformer, got %T", sharedInformer)
+	} else {
+		if filteredInf.filterKey != filterKey {
+			t.Errorf("Expected filterKey %q, got %q", filterKey, filteredInf.filterKey)
+		}
+		if filteredInf.filterValue != filterValue {
+			t.Errorf("Expected filterValue %q, got %q", filterValue, filteredInf.filterValue)
+		}
+		if filteredInf.allowMissing != allowMissing {
+			t.Errorf("Expected allowMissing %t, got %t", allowMissing, filteredInf.allowMissing)
+		}
 	}
 }
 
@@ -65,20 +78,29 @@ func TestFilteredSharedInformerFactory_Coordination_Leases(t *testing.T) {
 	factory := NewFilteredSharedInformerFactory(parentFactory, filterKey, filterValue, allowMissing)
 
 	leaseInformer := factory.Coordination().V1().Leases()
-	assert.NotNil(t, leaseInformer)
+	if leaseInformer == nil {
+		t.Fatal("Expected leaseInformer to be non-nil")
+	}
 
-	// Verify it's a filtered informer
 	_, ok := leaseInformer.(*FilteredLeaseInformer)
-	assert.True(t, ok, "Expected leaseInformer to be of type *FilteredLeaseInformer")
+	if !ok {
+		t.Errorf("Expected leaseInformer to be of type *FilteredLeaseInformer, got %T", leaseInformer)
+	}
 
-	// Trigger Informer creation
 	sharedInformer := leaseInformer.Informer()
-	filteredInf, ok := sharedInformer.(*FilteredInformer)
-	assert.True(t, ok, "Expected sharedInformer to be of type *FilteredInformer")
-	if ok {
-		assert.Equal(t, filterKey, filteredInf.filterKey)
-		assert.Equal(t, filterValue, filteredInf.filterValue)
-		assert.Equal(t, allowMissing, filteredInf.allowMissing)
+	filteredInf, ok := sharedInformer.(*ProviderConfigFilteredInformer)
+	if !ok {
+		t.Errorf("Expected sharedInformer to be of type *ProviderConfigFilteredInformer, got %T", sharedInformer)
+	} else {
+		if filteredInf.filterKey != filterKey {
+			t.Errorf("Expected filterKey %q, got %q", filterKey, filteredInf.filterKey)
+		}
+		if filteredInf.filterValue != filterValue {
+			t.Errorf("Expected filterValue %q, got %q", filterValue, filteredInf.filterValue)
+		}
+		if filteredInf.allowMissing != allowMissing {
+			t.Errorf("Expected allowMissing %t, got %t", allowMissing, filteredInf.allowMissing)
+		}
 	}
 }
 
@@ -87,13 +109,14 @@ func TestFilteredSharedInformerFactory_Cleanup(t *testing.T) {
 	parentFactory := informers.NewSharedInformerFactory(client, 0)
 	factory := NewFilteredSharedInformerFactory(parentFactory, "k", "v", false)
 
-	// Register some informers
-	_ = factory.Core().V1().Nodes().Informer().(*FilteredInformer)
-	_ = factory.Coordination().V1().Leases().Informer().(*FilteredInformer)
+	_ = factory.Core().V1().Nodes().Informer()
+	_ = factory.Coordination().V1().Leases().Informer()
 
 	factory.Cleanup()
 
-	assert.Nil(t, factory.informers)
+	if factory.informers != nil {
+		t.Errorf("Expected factory.informers to be nil after Cleanup, got %v", factory.informers)
+	}
 
 	// Ensure calling it again is safe
 	factory.Cleanup()
@@ -104,11 +127,9 @@ func TestFilteredSharedInformerFactory_Concurrency(t *testing.T) {
 	parentFactory := informers.NewSharedInformerFactory(client, 0)
 	factory := NewFilteredSharedInformerFactory(parentFactory, "k", "v", false)
 
-	// Test concurrent access to RegisterInformer and Cleanup
 	var wg sync.WaitGroup
 	startCh := make(chan struct{})
 
-	// Writers (RegisterInformer via Informer())
 	concurrency := 10
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
@@ -121,7 +142,6 @@ func TestFilteredSharedInformerFactory_Concurrency(t *testing.T) {
 		}()
 	}
 
-	// Cleaner
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
