@@ -21,7 +21,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -52,8 +52,8 @@ jobs:
         if: steps.determine_action.outputs.mode == 'push'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            git config --local user.name "github-actions[bot]"
-            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "GKE MT Bot"
+            git config --local user.email "gke-mt-bot@google.com"
             git add .
             git commit -m "Auto-generate code and tidy modules [skip ci]"
             git push
