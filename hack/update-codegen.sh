@@ -54,9 +54,20 @@ cd code-generator
 git checkout 305c555d2838b80c72046125e4e0074a5fbbe72d --quiet # https://github.com/kubernetes/code-generator/releases/tag/v0.27.16
 CODEGEN_PKG="${PWD}"
 
+echo "Installing register-gen..."
+go install "${CODEGEN_PKG}/cmd/register-gen" >/dev/null
+REGISTER_GEN="${GOBIN}/register-gen"
+
 if [ -d "${REPO_ROOT}/pkg/apis/providerconfig/v1_kubernetes_apis" ]; then
   echo "Performing code generation for ProviderConfig CRD"
   cd "${REPO_ROOT}"
+
+  echo "Generating register for ProviderConfig"
+  "${REGISTER_GEN}" \
+    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis \
+    --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
+    --output-file-base zz_generated.register
+
   "${CODEGEN_PKG}"/generate-groups.sh \
     "deepcopy,client,informer,lister" \
     github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
@@ -77,6 +88,13 @@ fi
 if [ -d "${REPO_ROOT}/pkg/apis/tenant/v1_kubernetes_apis" ]; then
   echo "Performing code generation for Tenant CRD"
   cd "${REPO_ROOT}"
+
+  echo "Generating register for Tenant"
+  "${REGISTER_GEN}" \
+    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis \
+    --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
+    --output-file-base zz_generated.register
+
   "${CODEGEN_PKG}"/generate-groups.sh \
     "deepcopy,client,informer,lister" \
     github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/tenant/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
