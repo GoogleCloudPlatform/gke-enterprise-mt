@@ -1,45 +1,32 @@
-/*
-Copyright 2026 The Kubernetes Authors.
-*/
-
-// Package filtered provides a factory for filtered informers.
-package filtered
+package filteredinformer
 
 import (
 	"sync"
 
-	"k8s.io/client-go/informers"
 	coordinationinformers "k8s.io/client-go/informers/coordination"
 	coordinationv1 "k8s.io/client-go/informers/coordination/v1"
 	coreinformers "k8s.io/client-go/informers/core"
 	corev1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/informers"
 	coordinationv1listers "k8s.io/client-go/listers/coordination/v1"
 	v1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
-// =============================================================================
-// 1. The Factory Entry Point
-// =============================================================================
-
 // FilteredSharedInformerFactory wraps the standard factory.
-// It embeds the interface so all non-overridden methods (Start, WaitForCacheSync)
-// pass through to the underlying factory automatically.
-// filterKey is the label key to filter on.
-// filterValue is the label value to filter on.
-// allowMissing true means objects without the filterKey will be allowed.
-// WARNING: For now this only overrides Core() and Coordination() informers specifically for Nodes and Leases.
-// For others, it just returns the underlying factory. We will be adding more informers soon.
 type FilteredSharedInformerFactory struct {
-	informers.SharedInformerFactory // Embedding handles Start(), WaitForCacheSync(), etc.
-	filterKey                       string
-	filterValue                     string
-	allowMissing                    bool
+	informers.SharedInformerFactory
+	filterKey    string
+	filterValue  string
+	allowMissing bool
 
-	mu        sync.Mutex
-	informers []*FilteredInformer
+	mu            sync.Mutex
+	informers     []*ProviderConfigFilteredInformer
+	nodeInformer  cache.SharedIndexInformer
+	leaseInformer cache.SharedIndexInformer
 }
 
+// NewFilteredSharedInformerFactory creates a new FilteredSharedInformerFactory.
 func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, key, value string, allowMissing bool) *FilteredSharedInformerFactory {
 	return &FilteredSharedInformerFactory{
 		SharedInformerFactory: parent,
@@ -49,19 +36,7 @@ func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, ke
 	}
 }
 
-// RegisterInformer is a custom function to FilteredSharedInformerFactory.
-// It is called internally when a new FilteredInformer wrapper is created
-// to keep track of it within the factory. This ensures that the factory can
-// call Cleanup() on all registered wrappers when the tenant is deleted.
-func (f *FilteredSharedInformerFactory) RegisterInformer(inf *FilteredInformer) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.informers = append(f.informers, inf)
-}
-
-// Cleanup is a custom function to FilteredSharedInformerFactory. 
-// It is needed to handle our very specific multi-tenant requirement of cleanly 
-// unregistering handlers without shutting down the global cache.
+// Cleanup cleans up all registered informers.
 func (f *FilteredSharedInformerFactory) Cleanup() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -71,7 +46,7 @@ func (f *FilteredSharedInformerFactory) Cleanup() {
 	f.informers = nil
 }
 
-// OVERRIDE 1: Core (Nodes)
+// Core overrides the standard Core() method to return filtered core informers.
 func (f *FilteredSharedInformerFactory) Core() coreinformers.Interface {
 	return &FilteredCoreWrapper{
 		Interface: f.SharedInformerFactory.Core(),
@@ -79,7 +54,7 @@ func (f *FilteredSharedInformerFactory) Core() coreinformers.Interface {
 	}
 }
 
-// OVERRIDE 2: Coordination (Leases)
+// Coordination overrides the standard Coordination() method to return filtered coordination informers.
 func (f *FilteredSharedInformerFactory) Coordination() coordinationinformers.Interface {
 	return &FilteredCoordinationWrapper{
 		Interface: f.SharedInformerFactory.Coordination(),
@@ -87,15 +62,15 @@ func (f *FilteredSharedInformerFactory) Coordination() coordinationinformers.Int
 	}
 }
 
-// =============================================================================
-// 2. The Core Chain (Nodes)
-// =============================================================================
+// --- Core Chain ---
 
+// FilteredCoreWrapper wraps the core v1 informers to apply filtering.
 type FilteredCoreWrapper struct {
 	coreinformers.Interface
 	factory *FilteredSharedInformerFactory
 }
 
+// V1 returns the core v1 informers.
 func (w *FilteredCoreWrapper) V1() corev1.Interface {
 	return &FilteredCoreV1Wrapper{
 		Interface: w.Interface.V1(),
@@ -103,12 +78,13 @@ func (w *FilteredCoreWrapper) V1() corev1.Interface {
 	}
 }
 
+// FilteredCoreV1Wrapper wraps the core v1 informers to apply filtering.
 type FilteredCoreV1Wrapper struct {
 	corev1.Interface
 	factory *FilteredSharedInformerFactory
 }
 
-// Intercept Nodes()
+// Nodes returns a filtered NodeInformer.
 func (w *FilteredCoreV1Wrapper) Nodes() corev1.NodeInformer {
 	return &FilteredNodeInformer{
 		NodeInformer: w.Interface.Nodes(),
@@ -116,15 +92,15 @@ func (w *FilteredCoreV1Wrapper) Nodes() corev1.NodeInformer {
 	}
 }
 
-// =============================================================================
-// 3. The Coordination Chain (Leases)
-// =============================================================================
+// --- Coordination Chain ---
 
+// FilteredCoordinationWrapper wraps the coordination informers to apply filtering.
 type FilteredCoordinationWrapper struct {
 	coordinationinformers.Interface
 	factory *FilteredSharedInformerFactory
 }
 
+// V1 returns the coordination v1 informers.
 func (w *FilteredCoordinationWrapper) V1() coordinationv1.Interface {
 	return &FilteredCoordinationV1Wrapper{
 		Interface: w.Interface.V1(),
@@ -132,12 +108,13 @@ func (w *FilteredCoordinationWrapper) V1() coordinationv1.Interface {
 	}
 }
 
+// FilteredCoordinationV1Wrapper wraps the coordination v1 informers to apply filtering.
 type FilteredCoordinationV1Wrapper struct {
 	coordinationv1.Interface
 	factory *FilteredSharedInformerFactory
 }
 
-// Intercept Leases()
+// Leases returns a filtered LeaseInformer.
 func (w *FilteredCoordinationV1Wrapper) Leases() coordinationv1.LeaseInformer {
 	return &FilteredLeaseInformer{
 		LeaseInformer: w.Interface.Leases(),
@@ -145,39 +122,50 @@ func (w *FilteredCoordinationV1Wrapper) Leases() coordinationv1.LeaseInformer {
 	}
 }
 
-// =============================================================================
-// 4. The Final Informer Wrappers
-// =============================================================================
-
-// --- NODE INFORMER ---
+// FilteredNodeInformer wraps NodeInformer to return a filtered informer.
 type FilteredNodeInformer struct {
 	corev1.NodeInformer
 	factory *FilteredSharedInformerFactory
 }
 
+// Informer returns the filtered SharedIndexInformer for nodes.
 func (i *FilteredNodeInformer) Informer() cache.SharedIndexInformer {
-	inf := newFilteredInformer(i.NodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing)
-	i.factory.RegisterInformer(inf)
+	i.factory.mu.Lock()
+	defer i.factory.mu.Unlock()
+	if i.factory.nodeInformer != nil {
+		return i.factory.nodeInformer
+	}
+	inf := NewFilteredInformer(i.NodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
+	i.factory.informers = append(i.factory.informers, inf)
+	i.factory.nodeInformer = inf
 	return inf
 }
 
+// Lister returns the filtered NodeLister.
 func (i *FilteredNodeInformer) Lister() v1listers.NodeLister {
 	return v1listers.NewNodeLister(i.Informer().GetIndexer())
 }
 
-// --- LEASE INFORMER ---
+// FilteredLeaseInformer wraps LeaseInformer to return a filtered informer.
 type FilteredLeaseInformer struct {
 	coordinationv1.LeaseInformer
 	factory *FilteredSharedInformerFactory
 }
 
+// Informer returns the filtered SharedIndexInformer for leases.
 func (i *FilteredLeaseInformer) Informer() cache.SharedIndexInformer {
-	// Leases in kube-node-lease often map 1:1 to nodes.
-	inf := newFilteredInformer(i.LeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing)
-	i.factory.RegisterInformer(inf)
+	i.factory.mu.Lock()
+	defer i.factory.mu.Unlock()
+	if i.factory.leaseInformer != nil {
+		return i.factory.leaseInformer
+	}
+	inf := NewFilteredInformer(i.LeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
+	i.factory.informers = append(i.factory.informers, inf)
+	i.factory.leaseInformer = inf
 	return inf
 }
 
+// Lister returns the filtered LeaseLister.
 func (i *FilteredLeaseInformer) Lister() coordinationv1listers.LeaseLister {
 	return coordinationv1listers.NewLeaseLister(i.Informer().GetIndexer())
 }
