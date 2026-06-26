@@ -3,14 +3,11 @@ module github.com/GoogleCloudPlatform/gke-enterprise-mt
 go 1.26.0
 
 require (
-	github.com/google/go-cmp v0.7.0
-	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a
-	sigs.k8s.io/controller-runtime v0.14.7
 )
 
 require (
