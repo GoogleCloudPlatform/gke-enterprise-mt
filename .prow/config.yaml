@@ -4,7 +4,7 @@ presubmits:
     always_run: true
     spec:
       containers:
-      - image: golang:1.25
+      - image: golang:1.26
         command:
         - make
         - build
@@ -13,7 +13,7 @@ presubmits:
     always_run: true
     spec:
       containers:
-      - image: golang:1.25
+      - image: golang:1.26
         command:
         - make
         - test
@@ -23,7 +23,7 @@ postsubmits:
     decorate: true
     spec:
       containers:
-      - image: golang:1.25
+      - image: golang:1.26
         command:
         - make
         - build
@@ -31,7 +31,7 @@ postsubmits:
     decorate: true
     spec:
       containers:
-      - image: golang:1.25
+      - image: golang:1.26
         command:
         - make
         - test
