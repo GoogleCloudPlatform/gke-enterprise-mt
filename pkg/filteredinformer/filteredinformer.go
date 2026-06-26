@@ -2,6 +2,7 @@
 package filteredinformer
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,8 +18,12 @@ type ProviderConfigFilteredInformer struct {
 	stopped      atomic.Bool
 }
 
+var globalMu sync.Mutex
+
 // NewFilteredInformer creates a new generic FilteredInformer (internally named ProviderConfigFilteredInformer for compatibility).
 func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterValue string, allowMissing bool) cache.SharedIndexInformer {
+	globalMu.Lock()
+	defer globalMu.Unlock()
 	indexers := informer.GetIndexer().GetIndexers()
 	if indexers != nil {
 		if _, ok := indexers[filterKey]; !ok {
@@ -39,8 +44,8 @@ func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, provi
 }
 
 // AddEventHandler adds an event handler that only processes events matching the filter.
-func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceEventHandler) {
-	i.SharedIndexInformer.AddEventHandler(
+func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+	return i.SharedIndexInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.filterFunc,
 			Handler:    handler,
@@ -49,8 +54,8 @@ func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceE
 }
 
 // AddEventHandlerWithResyncPeriod adds an event handler with resync period.
-func (i *ProviderConfigFilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) {
-	i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
+func (i *ProviderConfigFilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
+	return i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.filterFunc,
 			Handler:    handler,

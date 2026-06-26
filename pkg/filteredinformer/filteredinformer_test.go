@@ -99,7 +99,7 @@ type mockEventHandler struct {
 	deleteCalls int
 }
 
-func (m *mockEventHandler) OnAdd(obj any) {
+func (m *mockEventHandler) OnAdd(obj any, isInInitialList bool) {
 	m.addCalls++
 }
 
@@ -119,12 +119,12 @@ type fakeInformer struct {
 	indexer  cache.Indexer
 }
 
-func (f *fakeInformer) AddEventHandler(handler cache.ResourceEventHandler) {
-	f.handler = handler
+func (f *fakeInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+	f.handler = handler; return nil, nil
 }
 
-func (f *fakeInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) {
-	f.handler = handler
+func (f *fakeInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
+	f.handler = handler; return nil, nil
 }
 
 func (f *fakeInformer) GetIndexer() cache.Indexer {

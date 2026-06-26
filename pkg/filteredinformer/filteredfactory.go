@@ -20,8 +20,10 @@ type FilteredSharedInformerFactory struct {
 	filterValue  string
 	allowMissing bool
 
-	mu        sync.Mutex
-	informers []*ProviderConfigFilteredInformer
+	mu            sync.Mutex
+	informers     []*ProviderConfigFilteredInformer
+	nodeInformer  cache.SharedIndexInformer
+	leaseInformer cache.SharedIndexInformer
 }
 
 // NewFilteredSharedInformerFactory creates a new FilteredSharedInformerFactory.
@@ -32,13 +34,6 @@ func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, ke
 		filterValue:           value,
 		allowMissing:          allowMissing,
 	}
-}
-
-// RegisterInformer registers a filtered informer with the factory.
-func (f *FilteredSharedInformerFactory) RegisterInformer(inf *ProviderConfigFilteredInformer) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.informers = append(f.informers, inf)
 }
 
 // Cleanup cleans up all registered informers.
@@ -135,8 +130,14 @@ type FilteredNodeInformer struct {
 
 // Informer returns the filtered SharedIndexInformer for nodes.
 func (i *FilteredNodeInformer) Informer() cache.SharedIndexInformer {
+	i.factory.mu.Lock()
+	defer i.factory.mu.Unlock()
+	if i.factory.nodeInformer != nil {
+		return i.factory.nodeInformer
+	}
 	inf := NewFilteredInformer(i.NodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
-	i.factory.RegisterInformer(inf)
+	i.factory.informers = append(i.factory.informers, inf)
+	i.factory.nodeInformer = inf
 	return inf
 }
 
@@ -153,8 +154,14 @@ type FilteredLeaseInformer struct {
 
 // Informer returns the filtered SharedIndexInformer for leases.
 func (i *FilteredLeaseInformer) Informer() cache.SharedIndexInformer {
+	i.factory.mu.Lock()
+	defer i.factory.mu.Unlock()
+	if i.factory.leaseInformer != nil {
+		return i.factory.leaseInformer
+	}
 	inf := NewFilteredInformer(i.LeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
-	i.factory.RegisterInformer(inf)
+	i.factory.informers = append(i.factory.informers, inf)
+	i.factory.leaseInformer = inf
 	return inf
 }
 

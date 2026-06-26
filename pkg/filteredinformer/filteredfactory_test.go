@@ -1,6 +1,7 @@
 package filteredinformer
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -150,6 +151,29 @@ func TestFilteredSharedInformerFactory_Concurrency(t *testing.T) {
 			factory.Cleanup()
 		}
 	}()
+
+	close(startCh)
+	wg.Wait()
+}
+
+func TestFilteredSharedInformerFactory_MultiTenant_Concurrency(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	parentFactory := informers.NewSharedInformerFactory(client, 0)
+
+	var wg sync.WaitGroup
+	startCh := make(chan struct{})
+
+	concurrency := 10
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		tenantID := fmt.Sprintf("tenant-%d", i)
+		go func() {
+			defer wg.Done()
+			<-startCh
+			factory := NewFilteredSharedInformerFactory(parentFactory, "tenant-id", tenantID, false)
+			_ = factory.Core().V1().Nodes().Informer()
+		}()
+	}
 
 	close(startCh)
 	wg.Wait()
