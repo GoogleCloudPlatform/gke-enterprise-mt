@@ -1,0 +1,92 @@
+name: PR Policy Checks & Auto-Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  policy-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Required for enabling auto-merge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Prepare Upstream Remote
+        run: |
+          git remote add upstream-target https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git 2>/dev/null || true
+          git fetch upstream-target main
+
+      - name: Code Lock Check
+        if: github.event.pull_request.head.ref != 'copybara-sync-pr-jobs'
+        run: |
+          CHANGED_FILES=$(git diff --name-only upstream-target/main...HEAD)
+          for file in $CHANGED_FILES; do
+            if [[ "$file" =~ ^pkg/apis/ ]] || [[ "$file" =~ ^pkg/filteredinformer/ ]] || [[ "$file" =~ ^pkg/framework/ ]]; then
+              echo "ERROR: File $file is managed internally and cannot be modified directly on GitHub."
+              echo "This repository is a mirror. Please modify the code internally."
+              exit 1
+            fi
+          done
+
+      - name: Version Bump Check (GitHub-specific changes)
+        if: github.event.pull_request.head.ref != 'copybara-sync-pr-jobs'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if echo "$PR_BODY" | grep -qi "NO_VERSION_BUMP"; then
+            echo "Bypassing version bump check due to NO_VERSION_BUMP in PR description."
+            exit 0
+          fi
+          CHANGED_FILES=$(git diff --name-only upstream-target/main...HEAD)
+          NON_SYNCED_CHANGED=false
+          VERSION_CHANGED=false
+          for file in $CHANGED_FILES; do
+            if [[ "$file" == "pkg/VERSION" ]]; then
+              VERSION_CHANGED=true
+            elif [[ "$file" =~ ^pkg/apis/ ]] || [[ "$file" =~ ^pkg/filteredinformer/ ]] || [[ "$file" =~ ^pkg/framework/ ]]; then
+              # Managed internally, Code Lock Check will handle it
+              true
+            else
+              NON_SYNCED_CHANGED=true
+            fi
+          done
+          if [ "$NON_SYNCED_CHANGED" = true ] && [ "$VERSION_CHANGED" = false ]; then
+            echo "ERROR: You modified GitHub-specific files but did not update pkg/VERSION."
+            echo "Please increment pkg/VERSION to trigger a release."
+            exit 1
+          fi
+
+      - name: Verify Version (Downgrade Protection)
+        if: github.event.pull_request.head.ref == 'copybara-sync-pr-jobs'
+        run: |
+          if ! MAIN_VERSION=$(git show upstream-target/main:pkg/VERSION 2>/dev/null | tr -d '[:space:]'); then
+            echo "pkg/VERSION not found on main branch. Assuming 0.0.0"
+            MAIN_VERSION="0.0.0"
+          fi
+          PR_VERSION=$(cat pkg/VERSION | tr -d '[:space:]')
+          echo "Main branch version: $MAIN_VERSION"
+          echo "PR branch version:   $PR_VERSION"
+          if [ "$MAIN_VERSION" != "$PR_VERSION" ]; then
+            LOWER_VERSION=$(printf '%s\n%s' "$MAIN_VERSION" "$PR_VERSION" | sort -V | head -n1)
+            if [ "$LOWER_VERSION" = "$PR_VERSION" ] && [ "$PR_VERSION" != "$MAIN_VERSION" ]; then
+              echo "ERROR: PR version ($PR_VERSION) is lower than main branch version ($MAIN_VERSION)."
+              echo "If this is a Copybara sync PR, it means GitHub has a newer version."
+              echo "You must update the VERSION file internally to match or exceed $MAIN_VERSION."
+              exit 1
+            fi
+          fi
+
+      - name: Enable Auto-Merge
+        if: github.event.pull_request.head.ref == 'copybara-sync-pr-jobs'
+        run: gh pr merge "${{ github.event.pull_request.html_url }}" --auto --squash
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
