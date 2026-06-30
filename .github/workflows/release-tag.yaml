@@ -1,0 +1,43 @@
+name: Automated Release Tagging
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pkg/VERSION'
+
+jobs:
+  release-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION=$(cat pkg/VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check and Create Tag
+        run: |
+          TAG_NAME="v${{ steps.get_version.outputs.version }}"
+          echo "Target tag: $TAG_NAME"
+          
+          # Fetch tags to ensure we have them
+          git fetch --tags
+          
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists. Skipping release."
+          else
+            echo "Creating tag $TAG_NAME"
+            git config --local user.name "GKE MT Bot"
+            git config --local user.email "gke-mt-bot@google.com"
+            git tag "$TAG_NAME" -m "Release $TAG_NAME"
+            git push origin "$TAG_NAME"
+          fi
