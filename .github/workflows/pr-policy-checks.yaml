@@ -2,6 +2,7 @@ name: PR Policy Checks & Auto-Merge
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     branches:
       - main
 
@@ -84,6 +85,14 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Auto-Approve Copybara PR
+        if: |
+          github.event.pull_request.head.ref == 'copybara-sync-pr-jobs' && 
+          github.event.pull_request.user.login == 'copybara-service[bot]'
+        run: gh pr review "${{ github.event.pull_request.html_url }}" --approve -b "Automated approval for Copybara sync"
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Enable Auto-Merge
         if: github.event.pull_request.head.ref == 'copybara-sync-pr-jobs'
