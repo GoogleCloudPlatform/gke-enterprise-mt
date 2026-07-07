@@ -1,8 +1,10 @@
 approvers:
  - iromanycheva-eng
  - swetharepakula
+ - gke-mt-bot
 reviewers:
  - iromanycheva-eng
  - swetharepakula
  - priyapande
+ - gke-mt-bot
 
