@@ -53,9 +53,7 @@ func TestPeriodicQueueWithMultipleWorkers(t *testing.T) {
 				tq.Enqueue(cache.ExplicitKey(obj))
 			}
 
-			for tq.Len() > 0 {
-				time.Sleep(1 * time.Second)
-			}
+			tq.Shutdown()
 
 			if tc.expectRequeueForKey != "" {
 				if tq.queue.NumRequeues(tc.expectRequeueForKey) == 0 {
@@ -65,7 +63,6 @@ func TestPeriodicQueueWithMultipleWorkers(t *testing.T) {
 					t.Errorf("NumRequeues(%q) returned 0, expected non-zero requeue on error", tc.expectRequeueForKey)
 				}
 			}
-			tq.Shutdown()
 
 			// Enqueue after Shutdown isn't going to be synced.
 			tq.Enqueue(cache.ExplicitKey("more"))
