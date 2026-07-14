@@ -79,6 +79,7 @@ type ProviderConfigSpec struct {
 	//
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=30
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`
 	// +(Validation done in accordance with https://cloud.google.com/resource-manager/docs/creating-managing-projects#before_you_begin)
 	ProjectID string `json:"projectID"`
 	// PSC connection ID of the PSC endpoint.
