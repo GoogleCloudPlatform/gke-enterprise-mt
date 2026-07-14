@@ -11,6 +11,7 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// (-- LINT.IfChange --)
 type Tenant struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -130,3 +131,5 @@ type TenantStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// (-- LINT.ThenChange(//depot/google3/cloud/kubernetes/tenancy/apis/tenant/v1/tenant_types.go) --)
