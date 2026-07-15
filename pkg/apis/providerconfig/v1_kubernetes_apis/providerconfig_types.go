@@ -9,6 +9,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// (-- LINT.IfChange --)
 type ProviderConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -132,3 +133,5 @@ type PrincipalInfo struct {
 	// +kubebuilder:validation:Optional
 	Name string `json:"name,omitempty"`
 }
+
+// (-- LINT.ThenChange(//depot/google3/cloud/kubernetes/tenancy/apis/providerconfig/v1/providerconfig_types.go) --)
