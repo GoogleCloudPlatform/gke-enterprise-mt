@@ -88,25 +88,25 @@ type MetricFactory interface {
 // Prometheus metrics and registers them with a provided Prometheus Registerer.
 // It handles duplicate registrations by returning the already registered collector
 // if the types match.
-type stdMetricFactory struct {
+type StdMetricFactory struct {
 	reg prometheus.Registerer
 }
 
-// NewStdMetricFactory creates a new MetricFactory that registers metrics to the
+// NewStdMetricFactory creates a new StdMetricFactory that registers metrics to the
 // provided registerer. This is typically used in single-tenant mode or for
 // registering global shared metrics.
-func NewStdMetricFactory(r prometheus.Registerer) MetricFactory {
-	return &stdMetricFactory{reg: r}
+func NewStdMetricFactory(r prometheus.Registerer) *StdMetricFactory {
+	return &StdMetricFactory{reg: r}
 }
 
-// Cleanup is a no-op for stdMetricFactory. In standard single-tenant clusters,
+// Cleanup is a no-op for StdMetricFactory. In standard single-tenant clusters,
 // metrics are registered once at startup and live for the lifetime of the process.
 // Dynamic cleanup is only performed in MT mode (mtMetricFactory) during tenant churn.
-func (f *stdMetricFactory) Cleanup() {}
+func (f *StdMetricFactory) Cleanup() {}
 
 // NewCounterVec creates a new CounterVec and registers it to the standard registry.
 // If the metric is already registered, it returns the existing CounterVec.
-func (f *stdMetricFactory) NewCounterVec(opts prometheus.CounterOpts, labelNames []string) (CounterVec, error) {
+func (f *StdMetricFactory) NewCounterVec(opts prometheus.CounterOpts, labelNames []string) (CounterVec, error) {
 	vec := prometheus.NewCounterVec(opts, labelNames)
 	if err := f.reg.Register(vec); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -124,7 +124,7 @@ func (f *stdMetricFactory) NewCounterVec(opts prometheus.CounterOpts, labelNames
 
 // NewGaugeVec creates a new GaugeVec and registers it to the standard registry.
 // If the metric is already registered, it returns the existing GaugeVec.
-func (f *stdMetricFactory) NewGaugeVec(opts prometheus.GaugeOpts, labelNames []string) (GaugeVec, error) {
+func (f *StdMetricFactory) NewGaugeVec(opts prometheus.GaugeOpts, labelNames []string) (GaugeVec, error) {
 	vec := prometheus.NewGaugeVec(opts, labelNames)
 	if err := f.reg.Register(vec); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -143,7 +143,7 @@ func (f *stdMetricFactory) NewGaugeVec(opts prometheus.GaugeOpts, labelNames []s
 // NewHistogramVec creates a new HistogramVec (returned as ObserverVec) and
 // registers it to the standard registry. If the metric is already registered,
 // it returns the existing HistogramVec.
-func (f *stdMetricFactory) NewHistogramVec(opts prometheus.HistogramOpts, labelNames []string) (ObserverVec, error) {
+func (f *StdMetricFactory) NewHistogramVec(opts prometheus.HistogramOpts, labelNames []string) (ObserverVec, error) {
 	vec := prometheus.NewHistogramVec(opts, labelNames)
 	if err := f.reg.Register(vec); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -161,7 +161,7 @@ func (f *stdMetricFactory) NewHistogramVec(opts prometheus.HistogramOpts, labelN
 
 // NewCounter creates a new Counter and registers it to the standard registry.
 // If the metric is already registered, it returns the existing Counter.
-func (f *stdMetricFactory) NewCounter(opts prometheus.CounterOpts) (prometheus.Counter, error) {
+func (f *StdMetricFactory) NewCounter(opts prometheus.CounterOpts) (prometheus.Counter, error) {
 	c := prometheus.NewCounter(opts)
 	if err := f.reg.Register(c); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -179,7 +179,7 @@ func (f *stdMetricFactory) NewCounter(opts prometheus.CounterOpts) (prometheus.C
 
 // NewGauge creates a new Gauge and registers it to the standard registry.
 // If the metric is already registered, it returns the existing Gauge.
-func (f *stdMetricFactory) NewGauge(opts prometheus.GaugeOpts) (prometheus.Gauge, error) {
+func (f *StdMetricFactory) NewGauge(opts prometheus.GaugeOpts) (prometheus.Gauge, error) {
 	g := prometheus.NewGauge(opts)
 	if err := f.reg.Register(g); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -197,7 +197,7 @@ func (f *stdMetricFactory) NewGauge(opts prometheus.GaugeOpts) (prometheus.Gauge
 
 // NewHistogram creates a new Histogram and registers it to the standard registry.
 // If the metric is already registered, it returns the existing Histogram.
-func (f *stdMetricFactory) NewHistogram(opts prometheus.HistogramOpts) (prometheus.Histogram, error) {
+func (f *StdMetricFactory) NewHistogram(opts prometheus.HistogramOpts) (prometheus.Histogram, error) {
 	h := prometheus.NewHistogram(opts)
 	if err := f.reg.Register(h); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
