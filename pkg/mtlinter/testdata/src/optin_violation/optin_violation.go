@@ -23,6 +23,8 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(globalCounter) // want "direct call to prometheus.MustRegister is forbidden; use mtmetrics factory instead"
-	prometheus.Register(globalCounter)     // want "direct call to prometheus.Register is forbidden; use mtmetrics factory instead"
+	prometheus.MustRegister(globalCounter)                   // want "direct call to prometheus.MustRegister is forbidden; use mtmetrics factory instead"
+	prometheus.Register(globalCounter)                       // want "direct call to prometheus.Register is forbidden; use mtmetrics factory instead"
+	prometheus.DefaultRegisterer.Register(globalCounter)     // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
+	prometheus.DefaultRegisterer.MustRegister(globalCounter) // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
 }

@@ -24,3 +24,15 @@ func Register(c any) error { return nil }
 
 // NewConstMetric is a mock.
 func NewConstMetric() {}
+
+// Registerer is a mock.
+type Registerer struct{}
+
+// Register is a mock.
+func (Registerer) Register(c any) error { return nil }
+
+// MustRegister is a mock.
+func (Registerer) MustRegister(cs ...any) {}
+
+// DefaultRegisterer is a mock.
+var DefaultRegisterer Registerer

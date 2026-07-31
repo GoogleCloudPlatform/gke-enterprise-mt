@@ -45,6 +45,7 @@ const (
 type controllerManager interface {
 	StartControllersForProviderConfig(ctx context.Context, pc *unstructured.Unstructured) error
 	StopControllersForProviderConfig(ctx context.Context, pc *unstructured.Unstructured) error
+	ForceCleanupTenant(pcKey string)
 }
 
 // Controller manages the ProviderConfig resource lifecycle.
@@ -92,6 +93,10 @@ func newController(manager controllerManager, providerConfigInformer cache.Share
 			UpdateFunc: func(old, cur any) {
 				klog.V(4).InfoS("Enqueue update event", "old", old, "new", cur)
 				c.providerConfigQueue.Enqueue(cur)
+			},
+			DeleteFunc: func(obj any) {
+				klog.V(4).InfoS("Enqueue delete event", "object", obj)
+				c.providerConfigQueue.Enqueue(obj)
 			},
 		})
 
@@ -154,6 +159,7 @@ func (c *Controller) sync(ctx context.Context, key string, syncID int32) (err er
 	}
 	if !exists || obj == nil {
 		klog.InfoS("ProviderConfig does not exist anymore", "key", key, "syncID", syncID, "tenant", tenantUID)
+		c.manager.ForceCleanupTenant(key)
 		return nil
 	}
 

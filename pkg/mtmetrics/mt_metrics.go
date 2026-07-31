@@ -27,6 +27,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// DefaultGlobalTracker is the default global tracker.
+var DefaultGlobalTracker = NewGlobalMetricsTracker()
+
 // AggregationStrategy defines how tenant metric values are aggregated (Sum, Max, Min).
 type AggregationStrategy int
 
