@@ -113,7 +113,7 @@ func NewAnalyzer() *analysis.Analyzer {
 			}
 		}
 
-		// 2. Check for forbidden calls (prometheus.Register, prometheus.MustRegister)
+		// 2. Check for forbidden calls (prometheus.Register, prometheus.DefaultRegisterer.Register)
 		nodeTypes := []ast.Node{
 			(*ast.CallExpr)(nil),
 		}
@@ -124,38 +124,37 @@ func NewAnalyzer() *analysis.Analyzer {
 				return
 			}
 
-			ident, ok := fun.X.(*ast.Ident)
-			if !ok {
-				return
-			}
+			isViolation := false
+			msg := ""
 
-			obj := pass.TypesInfo.Uses[ident]
-			if obj == nil {
-				return
-			}
-
-			pkgName, ok := obj.(*types.PkgName)
-			if !ok {
-				return
-			}
-
-			isPromPkg := false
-			for _, imp := range prometheusImports {
-				if pkgName.Imported().Path() == imp {
-					isPromPkg = true
-					break
+			// Case A: prom.Register(...)
+			if ident, ok := fun.X.(*ast.Ident); ok {
+				if isPrometheusPackage(pass, ident) {
+					switch fun.Sel.Name {
+					case "Register", "MustRegister", "MustRegisterOrDie":
+						isViolation = true
+						msg = "direct call to prometheus." + fun.Sel.Name + " is forbidden; use mtmetrics factory instead"
+					}
+				}
+			} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
+				// Case B: prom.DefaultRegisterer.Register(...)
+				if sel.Sel.Name == "DefaultRegisterer" {
+					if ident, ok := sel.X.(*ast.Ident); ok {
+						if isPrometheusPackage(pass, ident) {
+							switch fun.Sel.Name {
+							case "Register", "MustRegister", "MustRegisterOrDie":
+								isViolation = true
+								msg = "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
+							}
+						}
+					}
 				}
 			}
 
-			if !isPromPkg {
-				return
-			}
-
-			switch fun.Sel.Name {
-			case "Register", "MustRegister", "MustRegisterOrDie":
+			if isViolation {
 				pass.Report(analysis.Diagnostic{
 					Pos:     call.Pos(),
-					Message: "direct call to prometheus." + fun.Sel.Name + " is forbidden; use mtmetrics factory instead",
+					Message: msg,
 				})
 			}
 		})
@@ -280,5 +279,22 @@ func containsPrometheusType(t types.Type, visited map[string]bool) bool {
 		return containsPrometheusType(x.Underlying(), visited)
 	}
 
+	return false
+}
+
+func isPrometheusPackage(pass *analysis.Pass, ident *ast.Ident) bool {
+	obj := pass.TypesInfo.Uses[ident]
+	if obj == nil {
+		return false
+	}
+	pkgName, ok := obj.(*types.PkgName)
+	if !ok {
+		return false
+	}
+	for _, imp := range prometheusImports {
+		if pkgName.Imported().Path() == imp {
+			return true
+		}
+	}
 	return false
 }
