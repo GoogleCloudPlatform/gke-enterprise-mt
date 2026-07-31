@@ -517,3 +517,134 @@ func TestManagerStartReturnsErrorOnNilChannel(t *testing.T) {
 		t.Fatal("Expected StartControllersForProviderConfig to fail when StartController returns nil channel, but it succeeded")
 	}
 }
+
+func TestManagerForceCleanup(t *testing.T) {
+	ctx := context.Background()
+	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	manager := newManager(
+		dynamicClient,
+		"test-finalizer",
+		mockStarter,
+	)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := unstructured.SetNestedField(pc.Object, "test-tenant-uid", "spec", "principalInfo", "id"); err != nil {
+		t.Fatalf("Failed to set tenant UID: %v", err)
+	}
+
+	if err := createProviderConfigInClient(ctx, dynamicClient, pc); err != nil {
+		t.Fatalf("Failed to create test ProviderConfig: %v", err)
+	}
+
+	// Start the controller
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Stop the controller -> should start timer and add to deleting map
+	if err := manager.StopControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	manager.deletingMu.Lock()
+	state, exists := manager.deleting["test-pc"]
+	manager.deletingMu.Unlock()
+
+	if !exists {
+		t.Fatal("Expected tenant to be in deleting map")
+	}
+	if state.tenantUID != "test-tenant-uid" {
+		t.Errorf("Expected tenantUID to be test-tenant-uid, got %s", state.tenantUID)
+	}
+	if state.cancel == nil {
+		t.Error("Expected cancel function to be set")
+	}
+
+	// Call ForceCleanupTenant
+	manager.ForceCleanupTenant("test-pc")
+
+	manager.deletingMu.Lock()
+	_, exists = manager.deleting["test-pc"]
+	manager.deletingMu.Unlock()
+
+	if exists {
+		t.Error("Expected tenant to be removed from deleting map after ForceCleanupTenant")
+	}
+}
+
+func TestManagerStartClearsDeletingMap(t *testing.T) {
+	ctx := context.Background()
+	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	manager := newManager(
+		dynamicClient,
+		"test-finalizer",
+		mockStarter,
+	)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := unstructured.SetNestedField(pc.Object, "test-tenant-uid", "spec", "principalInfo", "id"); err != nil {
+		t.Fatalf("Failed to set tenant UID: %v", err)
+	}
+
+	if err := createProviderConfigInClient(ctx, dynamicClient, pc); err != nil {
+		t.Fatalf("Failed to create test ProviderConfig: %v", err)
+	}
+
+	// Start the controller
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Stop the controller -> should start timer and add to deleting map
+	if err := manager.StopControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	manager.deletingMu.Lock()
+	_, exists := manager.deleting["test-pc"]
+	manager.deletingMu.Unlock()
+
+	if !exists {
+		t.Fatal("Expected tenant to be in deleting map")
+	}
+
+	// Start the controller again (simulating recreation/revival)
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	manager.deletingMu.Lock()
+	_, exists = manager.deleting["test-pc"]
+	manager.deletingMu.Unlock()
+
+	if exists {
+		t.Error("Expected tenant to be removed from deleting map after starting controllers again")
+	}
+}
+
+func TestManagerForceCleanupFallback(t *testing.T) {
+	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	manager := newManager(
+		dynamicClient,
+		"test-finalizer",
+		mockStarter,
+	)
+
+	// Call ForceCleanupTenant for a tenant not in the deleting map.
+	// It should fall back to using the key as tenantUID.
+	manager.ForceCleanupTenant("test-pc-fallback")
+
+	manager.deletingMu.Lock()
+	_, exists := manager.deleting["test-pc-fallback"]
+	manager.deletingMu.Unlock()
+
+	if exists {
+		t.Error("Expected tenant to not be in deleting map")
+	}
+}

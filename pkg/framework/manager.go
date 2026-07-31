@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
+	"time"
 
 	"k8s.io/klog/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,7 +13,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	mtmetrics "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/mtmetrics"
 )
+
+type deletingTenantState struct {
+	tenantUID string
+	cancel    context.CancelFunc
+}
 
 // manager coordinates lifecycle of controllers scoped to individual ProviderConfigs.
 // It ensures per-ProviderConfig controller startup is idempotent, adds/removes
@@ -25,6 +33,9 @@ type manager struct {
 	client            dynamic.Interface
 	finalizerName     string
 	controllerStarter ControllerStarter
+
+	deletingMu sync.Mutex
+	deleting   map[string]*deletingTenantState
 }
 
 // newManager constructs a new generic ProviderConfig controller manager.
@@ -36,6 +47,7 @@ func newManager(client dynamic.Interface, finalizerName string, controllerStarte
 		client:            client,
 		finalizerName:     finalizerName,
 		controllerStarter: controllerStarter,
+		deleting:          make(map[string]*deletingTenantState),
 	}
 }
 
@@ -94,6 +106,13 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 
 	pcKey := providerConfigKey(pc)
 
+	m.deletingMu.Lock()
+	if state, exists := m.deleting[pcKey]; exists {
+		state.cancel()
+		delete(m.deleting, pcKey)
+	}
+	m.deletingMu.Unlock()
+
 	cs, existed := m.controllers.GetOrCreate(pcKey)
 	if cs.stopCh != nil {
 		klog.Info("Controllers for provider config already exist, skipping start")
@@ -146,6 +165,31 @@ func (m *manager) StopControllersForProviderConfig(ctx context.Context, pc *unst
 	}
 	pcKey := providerConfigKey(pc)
 
+	tenantUID, found, err := unstructured.NestedString(pc.Object, "spec", "principalInfo", "id")
+	if err != nil || !found || tenantUID == "" {
+		klog.Warningf("Could not find tenant UID in spec.principalInfo.id for ProviderConfig %s: %v. Falling back to name.", pc.GetName(), err)
+		tenantUID = pc.GetName()
+	}
+
+	m.deletingMu.Lock()
+	if _, exists := m.deleting[pcKey]; !exists {
+		timerCtx, cancel := context.WithCancel(context.Background())
+		m.deleting[pcKey] = &deletingTenantState{
+			tenantUID: tenantUID,
+			cancel:    cancel,
+		}
+		go func(key string, tctx context.Context) {
+			select {
+			case <-tctx.Done():
+				return
+			case <-time.After(24 * time.Hour):
+				klog.Warningf("24h timer expired for ProviderConfig %s, forcing metrics cleanup", key)
+				m.ForceCleanupTenant(key)
+			}
+		}(pcKey, timerCtx)
+	}
+	m.deletingMu.Unlock()
+
 	if cs, exists := m.controllers.Get(pcKey); exists {
 		m.controllers.Delete(pcKey)
 		if cs.stopCh != nil {
@@ -179,4 +223,24 @@ func (m *manager) StopControllersForProviderConfig(ctx context.Context, pc *unst
 	}
 	klog.Info("Stopped controllers for provider config")
 	return nil
+}
+
+// ForceCleanupTenant forces cleanup of tenant metrics and cancels the deleting timer.
+func (m *manager) ForceCleanupTenant(pcKey string) {
+	m.deletingMu.Lock()
+	var tenantUID string
+	if state, exists := m.deleting[pcKey]; exists {
+		state.cancel()
+		tenantUID = state.tenantUID
+		delete(m.deleting, pcKey)
+	} else {
+		// Fallback to pcKey as tenantUID if not in the deleting map.
+		tenantUID = pcKey
+	}
+	m.deletingMu.Unlock()
+
+	if tenantUID != "" {
+		mtmetrics.DefaultMultiGatherer.Unregister(tenantUID)
+		mtmetrics.DefaultGlobalTracker.ResetTenant(tenantUID)
+	}
 }
