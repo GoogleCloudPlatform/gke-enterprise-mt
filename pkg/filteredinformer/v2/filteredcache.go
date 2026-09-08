@@ -30,6 +30,26 @@ func (pc *providerConfigFilteredCache) Index(indexName string, obj any) ([]any, 
 	return providerConfigFilteredList(items, pc.providerConfigName), nil
 }
 
+// IndexKeys returns a list of keys belonging to the provider config.
+func (pc *providerConfigFilteredCache) IndexKeys(indexName, indexedValue string) ([]string, error) {
+	keys, err := pc.Indexer.IndexKeys(indexName, indexedValue)
+	if err != nil {
+		return nil, err
+	}
+
+	filteredKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		item, exists, err := pc.Indexer.GetByKey(key)
+		if err != nil {
+			return nil, err
+		}
+		if exists && isObjectInProviderConfig(item, pc.providerConfigName) {
+			filteredKeys = append(filteredKeys, key)
+		}
+	}
+	return filteredKeys, nil
+}
+
 // List returns a list of objects belonging to the provider config.
 func (pc *providerConfigFilteredCache) List() []any {
 	// Use the index if it exists for a faster lookup.
@@ -43,8 +63,15 @@ func (pc *providerConfigFilteredCache) List() []any {
 
 // ListKeys returns a list of keys belonging to the provider config.
 func (pc *providerConfigFilteredCache) ListKeys() []string {
+	// Directly query the indexer for keys matching the provider config.
+	keys, err := pc.Indexer.IndexKeys(providerConfigIndexName, pc.providerConfigName)
+	if err == nil {
+		return keys
+	}
+
+	// Fallback to the slower method if the index is not available or fails.
 	items := pc.List()
-	keys := make([]string, 0, len(items))
+	keys = make([]string, 0, len(items))
 	for _, item := range items {
 		if key, err := cache.MetaNamespaceKeyFunc(item); err == nil {
 			keys = append(keys, key)

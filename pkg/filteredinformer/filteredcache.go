@@ -30,6 +30,26 @@ func (pc *providerConfigFilteredCache) Index(indexName string, obj any) ([]any, 
 	return getFilteredListByValue(items, pc.filterKey, pc.filterValue, pc.allowMissing), nil
 }
 
+// IndexKeys returns a list of keys matching the filter.
+func (pc *providerConfigFilteredCache) IndexKeys(indexName, indexedValue string) ([]string, error) {
+	keys, err := pc.Indexer.IndexKeys(indexName, indexedValue)
+	if err != nil {
+		return nil, err
+	}
+
+	filteredKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		item, exists, err := pc.Indexer.GetByKey(key)
+		if err != nil {
+			return nil, err
+		}
+		if exists && isObjectMatchingValue(item, pc.filterKey, pc.filterValue, pc.allowMissing) {
+			filteredKeys = append(filteredKeys, key)
+		}
+	}
+	return filteredKeys, nil
+}
+
 // List returns a list of objects matching the filter.
 func (pc *providerConfigFilteredCache) List() []any {
 	// Use the index if it exists for a faster lookup.

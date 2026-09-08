@@ -209,6 +209,124 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 	}
 }
 
+func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
+	testCases := []struct {
+		desc           string
+		objectsInCache []any
+		queryName      string
+		expectedKeys   []string
+		expectedErr    error
+	}{
+		{
+			desc: "Retrieve keys by index in provider config",
+			objectsInCache: []any{
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+			},
+			queryName:    "obj1",
+			expectedKeys: []string{"ns1/obj1"},
+		},
+		{
+			desc: "Retrieve multiple keys by index in provider config",
+			objectsInCache: []any{
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+			},
+			queryName:    "obj1",
+			expectedKeys: []string{"ns1/obj1", "ns2/obj1"},
+		},
+		{
+			desc: "No keys when index key does not match",
+			objectsInCache: []any{
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
+			},
+			queryName:    "nonexistent",
+			expectedKeys: []string{},
+		},
+	}
+
+	indexName := "byName"
+	indexers := cache.Indexers{
+		indexName: func(obj any) ([]string, error) {
+			metaObj, err := meta.Accessor(obj)
+			if err != nil {
+				return nil, err
+			}
+			return []string{metaObj.GetName()}, nil
+		},
+		providerConfigIndexName: ProviderConfigIndexFunc,
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexers)
+			nsCache := &providerConfigFilteredCache{
+				Indexer:            indexer,
+				providerConfigName: "cs123456-abc",
+			}
+
+			for _, obj := range tc.objectsInCache {
+				indexer.Add(obj)
+			}
+
+			keys, err := nsCache.IndexKeys(indexName, tc.queryName)
+			if tc.expectedErr != nil {
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("IndexKeys(%s, %s) returned error '%v', want '%v'", indexName, tc.queryName, err, tc.expectedErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("IndexKeys(%s, %s) returned unexpected error: %v", indexName, tc.queryName, err)
+			}
+			sort.Strings(keys)
+			expected := make([]string, len(tc.expectedKeys))
+			copy(expected, tc.expectedKeys)
+			sort.Strings(expected)
+			if !reflect.DeepEqual(keys, expected) {
+				t.Errorf("IndexKeys(%s, %s) = %v, want %v", indexName, tc.queryName, keys, expected)
+			}
+		})
+	}
+
+	// Test fallback when provider config index fails or is missing
+	t.Run("fallback without provider config index", func(t *testing.T) {
+		t.Parallel()
+		indexersWithoutPC := cache.Indexers{
+			indexName: func(obj any) ([]string, error) {
+				metaObj, err := meta.Accessor(obj)
+				if err != nil {
+					return nil, err
+				}
+				return []string{metaObj.GetName()}, nil
+			},
+		}
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexersWithoutPC)
+		nsCache := &providerConfigFilteredCache{
+			Indexer:            indexer,
+			providerConfigName: "cs123456-abc",
+		}
+
+		obj1 := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"}
+		obj2 := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns2", Name: "obj1"}
+		indexer.Add(obj1)
+		indexer.Add(obj2)
+
+		keys, err := nsCache.IndexKeys(indexName, "obj1")
+		if err != nil {
+			t.Fatalf("IndexKeys returned unexpected error: %v", err)
+		}
+		expected := []string{"ns1/obj1"}
+		if !reflect.DeepEqual(keys, expected) {
+			t.Errorf("IndexKeys = %v, want %v", keys, expected)
+		}
+	})
+}
+
 func TestProviderConfigFilteredCache_List(t *testing.T) {
 	testCases := []struct {
 		desc              string
