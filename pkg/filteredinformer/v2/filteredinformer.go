@@ -15,7 +15,7 @@ type ProviderConfigFilteredInformer struct {
 
 // NewProviderConfigFilteredInformer creates a new ProviderConfigFilteredInformer.
 // The providerConfigName is supposed to be ProviderConfig.ObjectMeta.Name.
-func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) cache.SharedIndexInformer {
+func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) *ProviderConfigFilteredInformer {
 	indexers := informer.GetIndexer().GetIndexers()
 	// Add the index only if the indexers are not nil and the index doesn't already exist.
 	if indexers != nil {

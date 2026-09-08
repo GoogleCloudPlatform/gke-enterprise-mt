@@ -137,29 +137,46 @@ func (m *mockEventHandler) OnDelete(obj any) {
 	m.deleteCalls++
 }
 
+type fakeHandle struct{}
+
+func (f *fakeHandle) HasSynced() bool {
+	return true
+}
+
+func (f *fakeHandle) HasSyncedChecker() cache.DoneChecker {
+	return nil
+}
+
 // fakeInformer implements a fake SharedIndexInformer for testing.
 type fakeInformer struct {
 	cache.SharedIndexInformer
-	handler  cache.ResourceEventHandler
-	options  cache.HandlerOptions
-	indexers cache.Indexers
-	indexer  cache.Indexer
+	handler       cache.ResourceEventHandler
+	options       cache.HandlerOptions
+	indexers      cache.Indexers
+	indexer       cache.Indexer
+	removedHandle cache.ResourceEventHandlerRegistration
+	removeErr     error
 }
 
 func (f *fakeInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
 	f.handler = handler
-	return nil, nil
+	return &fakeHandle{}, nil
 }
 
 func (f *fakeInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
 	f.handler = handler
-	return nil, nil
+	return &fakeHandle{}, nil
 }
 
 func (f *fakeInformer) AddEventHandlerWithOptions(handler cache.ResourceEventHandler, options cache.HandlerOptions) (cache.ResourceEventHandlerRegistration, error) {
 	f.handler = handler
 	f.options = options
-	return nil, nil
+	return &fakeHandle{}, nil
+}
+
+func (f *fakeInformer) RemoveEventHandler(handle cache.ResourceEventHandlerRegistration) error {
+	f.removedHandle = handle
+	return f.removeErr
 }
 
 func (f *fakeInformer) GetIndexer() cache.Indexer {
@@ -182,6 +199,26 @@ func (f *fakeInformer) AddIndexers(indexers cache.Indexers) error {
 
 func (f *fakeInformer) HasSyncedChecker() cache.DoneChecker {
 	return nil
+}
+
+// TestFilteredInformer_RemoveEventHandler verifies that RemoveEventHandler properly delegates
+// to the underlying SharedIndexInformer.
+func TestFilteredInformer_RemoveEventHandler(t *testing.T) {
+	fake := &fakeInformer{}
+	filteredinformer := NewProviderConfigFilteredInformer(fake, "test-provider-config")
+
+	reg, err := filteredinformer.AddEventHandler(cache.ResourceEventHandlerFuncs{})
+	if err != nil {
+		t.Fatalf("AddEventHandler returned unexpected error: %v", err)
+	}
+
+	if err := filteredinformer.RemoveEventHandler(reg); err != nil {
+		t.Errorf("RemoveEventHandler returned unexpected error: %v", err)
+	}
+
+	if fake.removedHandle != reg {
+		t.Errorf("Expected removedHandle to be %v, got %v", reg, fake.removedHandle)
+	}
 }
 
 // TestProviderConfigFilteredInformer_EventHandlerFiltering verifies that the event handler

@@ -840,3 +840,63 @@ func TestFilteredCache_Bookmark(t *testing.T) {
 		})
 	}
 }
+
+func TestFilteredCache_MultiCache_LastStoreSyncResourceVersion(t *testing.T) {
+	underlying := &indexerWithLSSRV{
+		Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+		rv:      "sync-rv-999",
+	}
+
+	fc1 := &providerConfigFilteredCache{
+		Indexer:            underlying,
+		providerConfigName: "provider-config-1",
+	}
+	fc2 := &providerConfigFilteredCache{
+		Indexer:            underlying,
+		providerConfigName: "provider-config-2",
+	}
+
+	// Verify that both filtered caches return the same resource version as the underlying indexer,
+	// unaffected by the provider config filtering.
+	if got1 := fc1.LastStoreSyncResourceVersion(); got1 != underlying.rv {
+		t.Errorf("fc1.LastStoreSyncResourceVersion() = %q, want %q", got1, underlying.rv)
+	}
+	if got2 := fc2.LastStoreSyncResourceVersion(); got2 != underlying.rv {
+		t.Errorf("fc2.LastStoreSyncResourceVersion() = %q, want %q", got2, underlying.rv)
+	}
+	if fc1.LastStoreSyncResourceVersion() != fc2.LastStoreSyncResourceVersion() {
+		t.Errorf("expected fc1 and fc2 to have identical LastStoreSyncResourceVersion, got %q vs %q",
+			fc1.LastStoreSyncResourceVersion(), fc2.LastStoreSyncResourceVersion())
+	}
+}
+
+func TestFilteredCache_MultiCache_Bookmark(t *testing.T) {
+	underlying := &indexerWithBookmark{
+		Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+	}
+
+	fc1 := &providerConfigFilteredCache{
+		Indexer:            underlying,
+		providerConfigName: "provider-config-1",
+	}
+	fc2 := &providerConfigFilteredCache{
+		Indexer:            underlying,
+		providerConfigName: "provider-config-2",
+	}
+
+	testRV := "bookmark-rv-456"
+	fc1.Bookmark(testRV)
+
+	// Bookmark called on fc1 should be reflected on the shared underlying indexer
+	if underlying.bookmarkedRV != testRV {
+		t.Errorf("underlying indexer bookmarkedRV = %q, want %q", underlying.bookmarkedRV, testRV)
+	}
+
+	// Another bookmark call on fc2 updates the shared underlying indexer
+	updatedRV := "bookmark-rv-789"
+	fc2.Bookmark(updatedRV)
+	if underlying.bookmarkedRV != updatedRV {
+		t.Errorf("underlying indexer bookmarkedRV after fc2 bookmark = %q, want %q", underlying.bookmarkedRV, updatedRV)
+	}
+}
+
