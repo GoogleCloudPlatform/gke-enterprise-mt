@@ -31,7 +31,7 @@ func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, provi
 
 // AddEventHandler adds an event handler that only processes events for the specified ProviderConfig.
 func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
-	return return i.SharedIndexInformer.AddEventHandler(
+	return i.SharedIndexInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.providerConfigFilter,
 			Handler:    handler,
@@ -41,7 +41,7 @@ func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceE
 
 // AddEventHandlerWithResyncPeriod adds an event handler with resync period.
 func (i *ProviderConfigFilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
-	return return i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
+	return i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.providerConfigFilter,
 			Handler:    handler,

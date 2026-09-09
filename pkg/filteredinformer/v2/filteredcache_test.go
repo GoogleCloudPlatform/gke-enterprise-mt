@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"google3/third_party/kubernetes_apis/k8s_io/apimachinery/pkg/api/meta/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )

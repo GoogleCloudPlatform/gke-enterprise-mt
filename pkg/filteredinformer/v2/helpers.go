@@ -3,7 +3,7 @@ package filteredinformerv2
 import (
 	"fmt"
 
-	"google3/third_party/kubernetes_apis/k8s_io/apimachinery/pkg/api/meta/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/tools/cache"
 )
 
