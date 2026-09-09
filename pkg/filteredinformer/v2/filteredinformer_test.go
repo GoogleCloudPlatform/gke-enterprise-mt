@@ -92,6 +92,32 @@ func TestFilteredInformer_AddEventHandlerWithResyncPeriod(t *testing.T) {
 	}
 }
 
+// TestFilteredInformer_AddEventHandlerWithOptions verifies that the
+// filteredinformer.AddEventHandlerWithOptions method passes options correctly.
+func TestFilteredInformer_AddEventHandlerWithOptions(t *testing.T) {
+	fake := &fakeInformer{}
+	filteredinformer := NewProviderConfigFilteredInformer(fake, "test-provider-config")
+
+	handler := cache.ResourceEventHandlerFuncs{}
+	resyncPeriod := time.Minute
+	options := cache.HandlerOptions{
+		ResyncPeriod: &resyncPeriod,
+	}
+
+	if _, err := filteredinformer.AddEventHandlerWithOptions(handler, options); err != nil {
+		t.Errorf("AddEventHandlerWithOptions returned unexpected error: %v", err)
+	}
+
+	if fake.handler == nil {
+		t.Fatal("Expected handler to be set on fake informer")
+	}
+	
+	// Verify options were passed through
+	if fake.options.ResyncPeriod == nil || *fake.options.ResyncPeriod != resyncPeriod {
+		t.Errorf("Expected ResyncPeriod to be %v, got %v", resyncPeriod, fake.options.ResyncPeriod)
+	}
+}
+
 // mockEventHandler tracks the objects it receives for testing.
 type mockEventHandler struct {
 	addCalls    int
@@ -115,6 +141,7 @@ func (m *mockEventHandler) OnDelete(obj any) {
 type fakeInformer struct {
 	cache.SharedIndexInformer
 	handler  cache.ResourceEventHandler
+	options  cache.HandlerOptions
 	indexers cache.Indexers
 	indexer  cache.Indexer
 }
@@ -126,6 +153,12 @@ func (f *fakeInformer) AddEventHandler(handler cache.ResourceEventHandler) (cach
 
 func (f *fakeInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
 	f.handler = handler
+	return nil, nil
+}
+
+func (f *fakeInformer) AddEventHandlerWithOptions(handler cache.ResourceEventHandler, options cache.HandlerOptions) (cache.ResourceEventHandlerRegistration, error) {
+	f.handler = handler
+	f.options = options
 	return nil, nil
 }
 

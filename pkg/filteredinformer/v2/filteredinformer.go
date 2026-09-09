@@ -50,6 +50,17 @@ func (i *ProviderConfigFilteredInformer) AddEventHandlerWithResyncPeriod(handler
 	)
 }
 
+// AddEventHandlerWithOptions adds an event handler with options.
+func (i *ProviderConfigFilteredInformer) AddEventHandlerWithOptions(handler cache.ResourceEventHandler, options cache.HandlerOptions) (cache.ResourceEventHandlerRegistration, error) {
+	return i.SharedIndexInformer.AddEventHandlerWithOptions(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: i.providerConfigFilter,
+			Handler:    handler,
+		},
+		options,
+	)
+}
+
 // providerConfigFilter filters objects based on the provider config.
 func (i *ProviderConfigFilteredInformer) providerConfigFilter(obj any) bool {
 	return isObjectInProviderConfig(obj, i.providerConfigName)
