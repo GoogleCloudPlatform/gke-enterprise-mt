@@ -102,13 +102,18 @@ func (pc *providerConfigFilteredCache) GetByKey(key string) (item any, exists bo
 }
 
 // LastStoreSyncResourceVersion returns the last resource version from the underlying store.
-// Note: This is a new method required by client-go 1.36.
+// This is a new method required by client-go 1.36. It is used for tracking objects in the
+// underlying store and determining whether to resume a watch or not. Since filtered cache is a
+// projection over the shared underlying store, its resource version must stay in line with the
+// underlying cache.
 func (pc *providerConfigFilteredCache) LastStoreSyncResourceVersion() string {
 	return pc.Indexer.LastStoreSyncResourceVersion()
 }
 
-// Bookmark bookmarks the given resource version.
-// Note: This is a new method required by client-go 1.36.
+// Bookmark bookmarks the given resource version in the underlying store.
+// This is a new method required by client-go 1.36. Like LastStoreSyncResourceVersion, bookmarking
+// ensures progress tracking and watch resumption remain synchronized with the underlying physical
+// watch stream regardless of provider config filtering.
 func (pc *providerConfigFilteredCache) Bookmark(rv string) {
 	pc.Indexer.Bookmark(rv)
 }
