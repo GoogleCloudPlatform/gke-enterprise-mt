@@ -4,33 +4,33 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-// providerConfigFilteredCache implements cache.Store and cache.Indexer with provider config filtering.
+// providerConfigFilteredCache implements cache.Store and cache.Indexer with custom filtering.
 type providerConfigFilteredCache struct {
 	cache.Indexer
-	providerConfigName string
+	filterKey    string
+	filterValue  string
+	allowMissing bool
 }
 
 // ByIndex returns a list of objects that match the given index name and indexed value.
-// The list is filtered to only include objects belonging to the provider config.
 func (pc *providerConfigFilteredCache) ByIndex(indexName, indexedValue string) ([]any, error) {
 	items, err := pc.Indexer.ByIndex(indexName, indexedValue)
 	if err != nil {
 		return nil, err
 	}
-	return providerConfigFilteredList(items, pc.providerConfigName), nil
+	return getFilteredListByValue(items, pc.filterKey, pc.filterValue, pc.allowMissing), nil
 }
 
 // Index returns a list of objects that match the given index name and indexed value.
-// The list is filtered to only include objects belonging to the provider config.
 func (pc *providerConfigFilteredCache) Index(indexName string, obj any) ([]any, error) {
 	items, err := pc.Indexer.Index(indexName, obj)
 	if err != nil {
 		return nil, err
 	}
-	return providerConfigFilteredList(items, pc.providerConfigName), nil
+	return getFilteredListByValue(items, pc.filterKey, pc.filterValue, pc.allowMissing), nil
 }
 
-// IndexKeys returns a list of keys belonging to the provider config.
+// IndexKeys returns a list of keys matching the filter.
 func (pc *providerConfigFilteredCache) IndexKeys(indexName, indexedValue string) ([]string, error) {
 	keys, err := pc.Indexer.IndexKeys(indexName, indexedValue)
 	if err != nil {
@@ -43,35 +43,34 @@ func (pc *providerConfigFilteredCache) IndexKeys(indexName, indexedValue string)
 		if err != nil {
 			return nil, err
 		}
-		if exists && isObjectInProviderConfig(item, pc.providerConfigName) {
+		if exists && isObjectMatchingValue(item, pc.filterKey, pc.filterValue, pc.allowMissing) {
 			filteredKeys = append(filteredKeys, key)
 		}
 	}
 	return filteredKeys, nil
 }
 
-// List returns a list of objects belonging to the provider config.
+// List returns a list of objects matching the filter.
 func (pc *providerConfigFilteredCache) List() []any {
-	// Use the index if it exists for a faster lookup.
-	items, err := pc.Indexer.ByIndex(providerConfigIndexName, pc.providerConfigName)
-	if err == nil {
-		return items
+	// The label index cannot answer allowMissing queries: objects that do not
+	// carry filterKey are not indexed under any value, yet they must match when
+	// allowMissing is set. Only take the index fast path when the index alone is
+	// guaranteed to produce the complete answer.
+	if !pc.allowMissing {
+		items, err := pc.Indexer.ByIndex(pc.filterKey, pc.filterValue)
+		if err == nil {
+			return items
+		}
 	}
-	// Fallback to the slower method if the index is not available.
-	return providerConfigFilteredList(pc.Indexer.List(), pc.providerConfigName)
+	// Fallback to the slower method if the index is not available or cannot
+	// express the filter.
+	return getFilteredListByValue(pc.Indexer.List(), pc.filterKey, pc.filterValue, pc.allowMissing)
 }
 
-// ListKeys returns a list of keys belonging to the provider config.
+// ListKeys returns a list of keys matching the filter.
 func (pc *providerConfigFilteredCache) ListKeys() []string {
-	// Directly query the indexer for keys matching the provider config.
-	keys, err := pc.Indexer.IndexKeys(providerConfigIndexName, pc.providerConfigName)
-	if err == nil {
-		return keys
-	}
-
-	// Fallback to the slower method if the index is not available or fails.
 	items := pc.List()
-	keys = make([]string, 0, len(items))
+	keys := make([]string, 0, len(items))
 	for _, item := range items {
 		if key, err := cache.MetaNamespaceKeyFunc(item); err == nil {
 			keys = append(keys, key)
@@ -80,7 +79,7 @@ func (pc *providerConfigFilteredCache) ListKeys() []string {
 	return keys
 }
 
-// Get returns an object belonging to the provider config.
+// Get returns an object matching the filter.
 func (pc *providerConfigFilteredCache) Get(obj any) (item any, exists bool, err error) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -89,13 +88,13 @@ func (pc *providerConfigFilteredCache) Get(obj any) (item any, exists bool, err 
 	return pc.GetByKey(key)
 }
 
-// GetByKey returns an object belonging to the provider config.
+// GetByKey returns an object matching the filter.
 func (pc *providerConfigFilteredCache) GetByKey(key string) (item any, exists bool, err error) {
 	item, exists, err = pc.Indexer.GetByKey(key)
 	if !exists || err != nil {
 		return nil, exists, err
 	}
-	if isObjectInProviderConfig(item, pc.providerConfigName) {
+	if isObjectMatchingValue(item, pc.filterKey, pc.filterValue, pc.allowMissing) {
 		return item, true, nil
 	}
 	return nil, false, nil
