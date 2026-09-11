@@ -1,39 +1,53 @@
 package filteredinformerv2
 
 import (
-	"fmt"
 	"testing"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-func TestIsObjectInProviderConfig(t *testing.T) {
+func TestIsObjectMatchingValue(t *testing.T) {
 	testCases := []struct {
-		desc            string
-		object          any
-		expectedToMatch bool
+		desc               string
+		providerConfigName string
+		object             any
+		allowMissing       bool
+		expectedToMatch    bool
 	}{
 		{
-			desc:            "Object in provider config should return true",
-			object:          &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-			expectedToMatch: true,
+			desc:               "Object with matching label should return true",
+			providerConfigName: "p123456-abc",
+			object:             &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
+			allowMissing:       false,
+			expectedToMatch:    true,
 		},
 		{
-			desc:            "Object in different provider config should return false",
-			object:          &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-def"}},
-			expectedToMatch: false,
+			desc:               "Object with different label should return false",
+			providerConfigName: "p123456-abc",
+			object:             &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-def"}},
+			allowMissing:       false,
+			expectedToMatch:    false,
 		},
 		{
-			desc:            "Object with no provider config should return false",
-			object:          &metav1.ObjectMeta{Name: "obj3"},
-			expectedToMatch: false,
+			desc:               "Object with no label and allowMissing false should return false",
+			providerConfigName: "p123456-abc",
+			object:             &metav1.ObjectMeta{Name: "obj3"},
+			allowMissing:       false,
+			expectedToMatch:    false,
 		},
 		{
-			desc:            "Invalid object should return false",
-			object:          "invalid-object",
-			expectedToMatch: false,
+			desc:               "Object with no label and allowMissing true should return true",
+			providerConfigName: "p123456-abc",
+			object:             &metav1.ObjectMeta{Name: "obj3"},
+			allowMissing:       true,
+			expectedToMatch:    true,
+		},
+		{
+			desc:               "Invalid object should return false",
+			providerConfigName: "p123456-abc",
+			object:             "invalid-object",
+			allowMissing:       true,
+			expectedToMatch:    false,
 		},
 	}
 
@@ -42,108 +56,77 @@ func TestIsObjectInProviderConfig(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			providerConfigName := "p123456-abc"
-			result := isObjectInProviderConfig(tc.object, providerConfigName)
+			result := isObjectMatchingValue(tc.object, providerConfigLabel, tc.providerConfigName, tc.allowMissing)
 			if result != tc.expectedToMatch {
-				t.Errorf("isObjectInProviderConfig(%v, %q) = %v, want %v", tc.object, providerConfigName, result, tc.expectedToMatch)
+				t.Errorf("isObjectMatchingValue(%v, %q, %q, %t) = %v, want %v", tc.object, providerConfigLabel, tc.providerConfigName, tc.allowMissing, result, tc.expectedToMatch)
 			}
 		})
 	}
 }
 
-func TestProviderConfigFilteredList(t *testing.T) {
+func TestGetFilteredListByValue(t *testing.T) {
 	testCases := []struct {
-		desc            string
-		objects         []any
-		expectedObjects []any
+		desc               string
+		providerConfigName string
+		allowMissing       bool
+		objects            []any
+		expectedCount      int
 	}{
 		{
-			desc: "All objects in the provider config",
+			desc:               "All objects match",
+			providerConfigName: "p123456-abc",
+			allowMissing:       false,
 			objects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Name: "obj2"},
 			},
-			expectedObjects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-			},
+			expectedCount: 2,
 		},
 		{
-			desc: "Some objects in the provider config",
+			desc:               "Objects without label included when allowMissing is true",
+			providerConfigName: "p123456-abc",
+			allowMissing:       true,
 			objects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-def"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Name: "obj-unlabeled"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "other"}, Name: "obj3"},
 			},
-			expectedObjects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-			},
-		},
-		{
-			desc: "No objects in the provider config",
-			objects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-def"}},
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-def"}},
-			},
-			expectedObjects: []any{},
-		},
-		{
-			desc: "Invalid objects in the list",
-			objects: []any{
-				"invalid-object",
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-				12345, // Non-object type
-			},
-			expectedObjects: []any{
-				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}},
-			},
-		},
-		{
-			desc:            "Empty object list",
-			objects:         []any{},
-			expectedObjects: []any{},
+			expectedCount: 2,
 		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc // Capture range variable
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			providerConfigName := "p123456-abc"
-			result := providerConfigFilteredList(tc.objects, providerConfigName)
-
-			if len(result) != len(tc.expectedObjects) {
-				t.Errorf("providerConfigFilteredList(%v, %q) returned %d objects, want %d", tc.objects, providerConfigName, len(result), len(tc.expectedObjects))
-			}
-
-			for i, obj := range result {
-				expectedObj := tc.expectedObjects[i]
-
-				objMeta, err1 := metaAccessor(obj)
-				expectedMeta, err2 := metaAccessor(expectedObj)
-
-				if err1 != nil || err2 != nil {
-					t.Errorf("Error accessing object metadata: %v, %v", err1, err2)
-					continue
-				}
-
-				if objMeta.GetName() != expectedMeta.GetName() || objMeta.GetNamespace() != expectedMeta.GetNamespace() {
-					t.Errorf("providerConfigFilteredList(%v, %q) returned object %v, want %v", tc.objects, providerConfigName, objMeta, expectedMeta)
-				}
+			result := getFilteredListByValue(tc.objects, providerConfigLabel, tc.providerConfigName, tc.allowMissing)
+			if len(result) != tc.expectedCount {
+				t.Errorf("getFilteredListByValue returned %d objects, want %d", len(result), tc.expectedCount)
 			}
 		})
 	}
 }
 
-// Helper function to access metadata
-func metaAccessor(obj any) (metav1.Object, error) {
-	if accessor, ok := obj.(metav1.Object); ok {
-		return accessor, nil
+func TestMatchValue(t *testing.T) {
+	tests := []struct {
+		val          string
+		ok           bool
+		expectedVal  string
+		allowMissing bool
+		want         bool
+	}{
+		{val: "abc", ok: true, expectedVal: "abc", allowMissing: false, want: true},
+		{val: "abc", ok: true, expectedVal: "def", allowMissing: false, want: false},
+		{val: "", ok: false, expectedVal: "abc", allowMissing: false, want: false},
+		{val: "", ok: false, expectedVal: "abc", allowMissing: true, want: true},
+		{val: "abc", ok: true, expectedVal: "def", allowMissing: true, want: false},
 	}
-	if runtimeObj, ok := obj.(runtime.Object); ok {
-		return meta.Accessor(runtimeObj)
+
+	for _, tt := range tests {
+		got := MatchValue(tt.val, tt.ok, tt.expectedVal, tt.allowMissing)
+		if got != tt.want {
+			t.Errorf("MatchValue(%q, %t, %q, %t) = %t, want %t", tt.val, tt.ok, tt.expectedVal, tt.allowMissing, got, tt.want)
+		}
 	}
-	return nil, fmt.Errorf("object does not have ObjectMeta")
 }
