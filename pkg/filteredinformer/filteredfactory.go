@@ -84,11 +84,12 @@ type FilteredCoreV1Wrapper struct {
 	factory *FilteredSharedInformerFactory
 }
 
-// Nodes returns a filtered NodeInformer.
-func (w *FilteredCoreV1Wrapper) Nodes() corev1.NodeInformer {
+// Nodes returns a filtered TypedNodeInformer.
+// Note: client-go 1.37+ returns TypedNodeInformer instead of the untyped NodeInformer.
+func (w *FilteredCoreV1Wrapper) Nodes() corev1.TypedNodeInformer {
 	return &FilteredNodeInformer{
-		NodeInformer: w.Interface.Nodes(),
-		factory:      w.factory,
+		TypedNodeInformer: w.Interface.Nodes(),
+		factory:           w.factory,
 	}
 }
 
@@ -114,17 +115,18 @@ type FilteredCoordinationV1Wrapper struct {
 	factory *FilteredSharedInformerFactory
 }
 
-// Leases returns a filtered LeaseInformer.
-func (w *FilteredCoordinationV1Wrapper) Leases() coordinationv1.LeaseInformer {
+// Leases returns a filtered TypedLeaseInformer.
+// Note: client-go 1.37+ returns TypedLeaseInformer instead of the untyped LeaseInformer.
+func (w *FilteredCoordinationV1Wrapper) Leases() coordinationv1.TypedLeaseInformer {
 	return &FilteredLeaseInformer{
-		LeaseInformer: w.Interface.Leases(),
-		factory:       w.factory,
+		TypedLeaseInformer: w.Interface.Leases(),
+		factory:            w.factory,
 	}
 }
 
-// FilteredNodeInformer wraps NodeInformer to return a filtered informer.
+// FilteredNodeInformer wraps TypedNodeInformer to return a filtered informer.
 type FilteredNodeInformer struct {
-	corev1.NodeInformer
+	corev1.TypedNodeInformer
 	factory *FilteredSharedInformerFactory
 }
 
@@ -135,7 +137,7 @@ func (i *FilteredNodeInformer) Informer() cache.SharedIndexInformer {
 	if i.factory.nodeInformer != nil {
 		return i.factory.nodeInformer
 	}
-	inf := NewFilteredInformer(i.NodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
+	inf := NewFilteredInformer(i.TypedNodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
 	i.factory.informers = append(i.factory.informers, inf)
 	i.factory.nodeInformer = inf
 	return inf
@@ -146,9 +148,15 @@ func (i *FilteredNodeInformer) Lister() v1listers.NodeLister {
 	return v1listers.NewNodeLister(i.Informer().GetIndexer())
 }
 
-// FilteredLeaseInformer wraps LeaseInformer to return a filtered informer.
+// TypedInformer returns the filtered NodeIndexInformer.
+// Note: This method is required by TypedNodeInformer in client-go 1.37+.
+func (i *FilteredNodeInformer) TypedInformer() corev1.NodeIndexInformer {
+	return corev1.ToNodeIndexInformer(i.Informer())
+}
+
+// FilteredLeaseInformer wraps TypedLeaseInformer to return a filtered informer.
 type FilteredLeaseInformer struct {
-	coordinationv1.LeaseInformer
+	coordinationv1.TypedLeaseInformer
 	factory *FilteredSharedInformerFactory
 }
 
@@ -159,7 +167,7 @@ func (i *FilteredLeaseInformer) Informer() cache.SharedIndexInformer {
 	if i.factory.leaseInformer != nil {
 		return i.factory.leaseInformer
 	}
-	inf := NewFilteredInformer(i.LeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
+	inf := NewFilteredInformer(i.TypedLeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue, i.factory.allowMissing).(*ProviderConfigFilteredInformer)
 	i.factory.informers = append(i.factory.informers, inf)
 	i.factory.leaseInformer = inf
 	return inf
@@ -168,4 +176,10 @@ func (i *FilteredLeaseInformer) Informer() cache.SharedIndexInformer {
 // Lister returns the filtered LeaseLister.
 func (i *FilteredLeaseInformer) Lister() coordinationv1listers.LeaseLister {
 	return coordinationv1listers.NewLeaseLister(i.Informer().GetIndexer())
+}
+
+// TypedInformer returns the filtered LeaseIndexInformer.
+// Note: This method is required by TypedLeaseInformer in client-go 1.37+.
+func (i *FilteredLeaseInformer) TypedInformer() coordinationv1.LeaseIndexInformer {
+	return coordinationv1.ToLeaseIndexInformer(i.Informer())
 }
