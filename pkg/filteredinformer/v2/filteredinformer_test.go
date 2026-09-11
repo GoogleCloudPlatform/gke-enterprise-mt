@@ -16,20 +16,20 @@ func TestNewProviderConfigFilteredInformer(t *testing.T) {
 		sharedInformer := cache.NewSharedIndexInformer(nil, &corev1.Pod{}, 0, cache.Indexers{})
 		// Initially, no indexer.
 		indexers := sharedInformer.GetIndexer().GetIndexers()
-		if _, ok := indexers[providerConfigIndexName]; ok {
-			t.Fatalf("Indexer %q should not exist initially", providerConfigIndexName)
+		if _, ok := indexers[providerConfigLabel]; ok {
+			t.Fatalf("Indexer %q should not exist initially", providerConfigLabel)
 		}
 		// First call should add the indexer.
 		_ = NewProviderConfigFilteredInformer(sharedInformer, "test-provider-config-1")
 		indexers = sharedInformer.GetIndexer().GetIndexers()
-		if _, ok := indexers[providerConfigIndexName]; !ok {
-			t.Errorf("Indexer %q should have been added", providerConfigIndexName)
+		if _, ok := indexers[providerConfigLabel]; !ok {
+			t.Errorf("Indexer %q should have been added", providerConfigLabel)
 		}
 		// Second call should not fail and the indexer should still be there.
 		_ = NewProviderConfigFilteredInformer(sharedInformer, "test-provider-config-2")
 		indexers = sharedInformer.GetIndexer().GetIndexers()
-		if _, ok := indexers[providerConfigIndexName]; !ok {
-			t.Errorf("Indexer %q should still be present after second call", providerConfigIndexName)
+		if _, ok := indexers[providerConfigLabel]; !ok {
+			t.Errorf("Indexer %q should still be present after second call", providerConfigLabel)
 		}
 	})
 
@@ -55,6 +55,57 @@ func TestFilteredInformer_AddEventHandler(t *testing.T) {
 
 	if _, err := filteredinformer.AddEventHandler(handler); err != nil {
 		t.Errorf("AddEventHandler(%v) returned an unexpected error: %v", handler, err)
+	}
+}
+
+// TestFilteredInformer_Cleanup verifies that Cleanup deregisters every handler
+// that was registered through the filtered informer.
+func TestFilteredInformer_Cleanup(t *testing.T) {
+	sharedInformer := cache.NewSharedIndexInformer(nil, &corev1.Pod{}, 0, cache.Indexers{})
+	inf := NewFilteredInformer(sharedInformer, providerConfigLabel, "test-provider-config", false)
+
+	if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{}); err != nil {
+		t.Fatalf("AddEventHandler returned an unexpected error: %v", err)
+	}
+	if _, err := inf.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{}, time.Minute); err != nil {
+		t.Fatalf("AddEventHandlerWithResyncPeriod returned an unexpected error: %v", err)
+	}
+	if got, want := len(inf.registrations), 2; got != want {
+		t.Fatalf("len(registrations) = %d, want %d", got, want)
+	}
+
+	inf.Cleanup()
+
+	if got := len(inf.registrations); got != 0 {
+		t.Errorf("len(registrations) after Cleanup = %d, want 0", got)
+	}
+
+	// Cleanup must be idempotent.
+	inf.Cleanup()
+	if got := len(inf.registrations); got != 0 {
+		t.Errorf("len(registrations) after second Cleanup = %d, want 0", got)
+	}
+}
+
+// TestFilteredInformer_RemoveEventHandlerUntracks verifies that explicitly
+// removing a handler also drops it from the set tracked for Cleanup.
+func TestFilteredInformer_RemoveEventHandlerUntracks(t *testing.T) {
+	sharedInformer := cache.NewSharedIndexInformer(nil, &corev1.Pod{}, 0, cache.Indexers{})
+	inf := NewFilteredInformer(sharedInformer, providerConfigLabel, "test-provider-config", false)
+
+	reg, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{})
+	if err != nil {
+		t.Fatalf("AddEventHandler returned an unexpected error: %v", err)
+	}
+	if got, want := len(inf.registrations), 1; got != want {
+		t.Fatalf("len(registrations) = %d, want %d", got, want)
+	}
+
+	if err := inf.RemoveEventHandler(reg); err != nil {
+		t.Fatalf("RemoveEventHandler returned an unexpected error: %v", err)
+	}
+	if got := len(inf.registrations); got != 0 {
+		t.Errorf("len(registrations) after RemoveEventHandler = %d, want 0", got)
 	}
 }
 
@@ -111,7 +162,7 @@ func TestFilteredInformer_AddEventHandlerWithOptions(t *testing.T) {
 	if fake.handler == nil {
 		t.Fatal("Expected handler to be set on fake informer")
 	}
-	
+
 	// Verify options were passed through
 	if fake.options.ResyncPeriod == nil || *fake.options.ResyncPeriod != resyncPeriod {
 		t.Errorf("Expected ResyncPeriod to be %v, got %v", resyncPeriod, fake.options.ResyncPeriod)
@@ -326,7 +377,7 @@ func TestProviderConfigFilteredCache(t *testing.T) {
 	}}
 
 	fakeInformer := &fakeInformer{
-		indexers: cache.Indexers{providerConfigIndexName: ProviderConfigIndexFunc},
+		indexers: cache.Indexers{providerConfigLabel: NewLabelIndexFunc(providerConfigLabel)},
 	}
 	indexer := fakeInformer.GetIndexer()
 	indexer.Add(matchingObj)
@@ -409,7 +460,7 @@ func TestProviderConfigFilteredCache(t *testing.T) {
 
 	t.Run("ByIndex", func(t *testing.T) {
 		// Test with a matching provider config.
-		items, err := idx.ByIndex(providerConfigIndexName, providerConfigName1)
+		items, err := idx.ByIndex(providerConfigLabel, providerConfigName1)
 		if err != nil {
 			t.Fatalf("ByIndex(matching) returned an error: %v", err)
 		}
@@ -421,7 +472,7 @@ func TestProviderConfigFilteredCache(t *testing.T) {
 		}
 
 		// Test with a non-matching provider config.
-		items, err = idx.ByIndex(providerConfigIndexName, providerConfigName2)
+		items, err = idx.ByIndex(providerConfigLabel, providerConfigName2)
 		if err != nil {
 			t.Fatalf("ByIndex(non-matching) returned an error: %v", err)
 		}

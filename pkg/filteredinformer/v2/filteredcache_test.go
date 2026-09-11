@@ -65,8 +65,10 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 			t.Parallel()
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexers)
 			nsCache := &providerConfigFilteredCache{
-				Indexer:            indexer,
-				providerConfigName: "cs123456-abc",
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "cs123456-abc",
+				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
@@ -166,8 +168,10 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 				indexer = &mockIndexer{Indexer: realIndexer, indexErr: tc.expectedErr}
 			}
 			nsCache := &providerConfigFilteredCache{
-				Indexer:            indexer,
-				providerConfigName: "cs123456-abc",
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "cs123456-abc",
+				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
@@ -256,7 +260,7 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 			}
 			return []string{metaObj.GetName()}, nil
 		},
-		providerConfigIndexName: ProviderConfigIndexFunc,
+		providerConfigLabel: NewLabelIndexFunc(providerConfigLabel),
 	}
 
 	for _, tc := range testCases {
@@ -265,8 +269,10 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 			t.Parallel()
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexers)
 			nsCache := &providerConfigFilteredCache{
-				Indexer:            indexer,
-				providerConfigName: "cs123456-abc",
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "cs123456-abc",
+				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
@@ -307,8 +313,10 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 		}
 		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexersWithoutPC)
 		nsCache := &providerConfigFilteredCache{
-			Indexer:            indexer,
-			providerConfigName: "cs123456-abc",
+			Indexer:      indexer,
+			filterKey:    providerConfigLabel,
+			filterValue:  "cs123456-abc",
+			allowMissing: false,
 		}
 
 		obj1 := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"}
@@ -356,7 +364,7 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 	}{
 		{
 			name:     "with provider config index",
-			indexers: cache.Indexers{providerConfigIndexName: ProviderConfigIndexFunc},
+			indexers: cache.Indexers{providerConfigLabel: NewLabelIndexFunc(providerConfigLabel)},
 		},
 		{
 			name:     "without provider config index",
@@ -374,8 +382,10 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 					t.Parallel()
 					indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexTC.indexers)
 					nsCache := &providerConfigFilteredCache{
-						Indexer:            indexer,
-						providerConfigName: "p123456-abc",
+						Indexer:      indexer,
+						filterKey:    providerConfigLabel,
+						filterValue:  "p123456-abc",
+						allowMissing: false,
 					}
 
 					for _, obj := range tc.objectsInCache {
@@ -444,7 +454,7 @@ func TestProviderConfigFilteredCache_ListKeys(t *testing.T) {
 	}{
 		{
 			name:     "with provider config index",
-			indexers: cache.Indexers{providerConfigIndexName: ProviderConfigIndexFunc},
+			indexers: cache.Indexers{providerConfigLabel: NewLabelIndexFunc(providerConfigLabel)},
 		},
 		{
 			name:     "without provider config index",
@@ -462,8 +472,10 @@ func TestProviderConfigFilteredCache_ListKeys(t *testing.T) {
 					t.Parallel()
 					indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, indexTC.indexers)
 					nsCache := &providerConfigFilteredCache{
-						Indexer:            indexer,
-						providerConfigName: "p123456-abc",
+						Indexer:      indexer,
+						filterKey:    providerConfigLabel,
+						filterValue:  "p123456-abc",
+						allowMissing: false,
 					}
 					for _, obj := range tc.objectsInCache {
 						indexer.Add(obj)
@@ -595,8 +607,10 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 				indexer = &mockIndexer{Indexer: realIndexer, getByKeyErr: tc.expectedErr, getByKeyExists: tc.mockIndexerExists}
 			}
 			nsCache := &providerConfigFilteredCache{
-				Indexer:            indexer,
-				providerConfigName: "p123456-abc",
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "p123456-abc",
+				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
@@ -716,8 +730,10 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 				indexer = &mockIndexer{Indexer: realIndexer, getByKeyErr: tc.expectedErr, getByKeyExists: tc.expectedExist}
 			}
 			nsCache := &providerConfigFilteredCache{
-				Indexer:            indexer,
-				providerConfigName: "p123456-abc",
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "p123456-abc",
+				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
@@ -785,8 +801,10 @@ func TestFilteredCache_LastStoreSyncResourceVersion(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &providerConfigFilteredCache{
-				Indexer:            tc.indexer,
-				providerConfigName: "test-pc",
+				Indexer:      tc.indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "test-pc",
+				allowMissing: false,
 			}
 			if got := fc.LastStoreSyncResourceVersion(); got != tc.wantRV {
 				t.Errorf("LastStoreSyncResourceVersion() = %q, want %q", got, tc.wantRV)
@@ -827,8 +845,10 @@ func TestFilteredCache_Bookmark(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &providerConfigFilteredCache{
-				Indexer:            tc.indexer,
-				providerConfigName: "test-pc",
+				Indexer:      tc.indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "test-pc",
+				allowMissing: false,
 			}
 			fc.Bookmark("123")
 
@@ -836,6 +856,73 @@ func TestFilteredCache_Bookmark(t *testing.T) {
 				if got := tc.indexer.(*indexerWithBookmark).bookmarkedRV; got != tc.wantBookmarkedValue {
 					t.Errorf("Bookmark() did not bookmark resource version, got %q, want %q", got, tc.wantBookmarkedValue)
 				}
+			}
+		})
+	}
+}
+
+// TestProviderConfigFilteredCache_List_AllowMissing verifies that List honors
+// allowMissing even when the label index is registered.
+//
+// Objects without the filter label are not indexed under any value, so the
+// index fast path alone cannot answer an allowMissing query. List must fall
+// back to a full scan in that case, or unlabeled objects go missing.
+func TestProviderConfigFilteredCache_List_AllowMissing(t *testing.T) {
+	matching := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns", Name: "matching"}
+	otherValue := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns", Name: "other-value"}
+	unlabeled := &metav1.ObjectMeta{Namespace: "ns", Name: "unlabeled"}
+
+	testCases := []struct {
+		desc              string
+		allowMissing      bool
+		expectedItemNames []string
+	}{
+		{
+			desc:              "allowMissing includes objects without the label",
+			allowMissing:      true,
+			expectedItemNames: []string{"matching", "unlabeled"},
+		},
+		{
+			desc:              "not allowMissing excludes objects without the label",
+			allowMissing:      false,
+			expectedItemNames: []string{"matching"},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			// Register the label index so the fast path in List is available.
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				providerConfigLabel: NewLabelIndexFunc(providerConfigLabel),
+			})
+			for _, obj := range []any{matching, otherValue, unlabeled} {
+				if err := indexer.Add(obj); err != nil {
+					t.Fatalf("indexer.Add(%v) returned an unexpected error: %v", obj, err)
+				}
+			}
+
+			pcCache := &providerConfigFilteredCache{
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "cs123456-abc",
+				allowMissing: tc.allowMissing,
+			}
+
+			var gotNames []string
+			for _, item := range pcCache.List() {
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned an unexpected error: %v", item, err)
+				}
+				gotNames = append(gotNames, metaObj.GetName())
+			}
+			sort.Strings(gotNames)
+
+			if !reflect.DeepEqual(gotNames, tc.expectedItemNames) {
+				t.Errorf("List() returned %v, want %v", gotNames, tc.expectedItemNames)
 			}
 		})
 	}
