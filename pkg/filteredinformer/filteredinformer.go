@@ -3,7 +3,6 @@ package filteredinformer
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"k8s.io/client-go/tools/cache"
@@ -15,13 +14,15 @@ type ProviderConfigFilteredInformer struct {
 	filterKey    string
 	filterValue  string
 	allowMissing bool
-	stopped      atomic.Bool
+
+	mu            sync.Mutex
+	registrations []cache.ResourceEventHandlerRegistration
 }
 
 var globalMu sync.Mutex
 
 // NewFilteredInformer creates a new generic FilteredInformer (internally named ProviderConfigFilteredInformer for compatibility).
-func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterValue string, allowMissing bool) cache.SharedIndexInformer {
+func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterValue string, allowMissing bool) *ProviderConfigFilteredInformer {
 	globalMu.Lock()
 	defer globalMu.Unlock()
 	indexers := informer.GetIndexer().GetIndexers()
@@ -39,36 +40,65 @@ func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterVa
 }
 
 // NewProviderConfigFilteredInformer creates a new ProviderConfigFilteredInformer (legacy constructor).
-func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) cache.SharedIndexInformer {
+func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) *ProviderConfigFilteredInformer {
 	return NewFilteredInformer(informer, providerConfigLabel, providerConfigName, false)
 }
 
 // AddEventHandler adds an event handler that only processes events matching the filter.
 func (i *ProviderConfigFilteredInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
-	return i.SharedIndexInformer.AddEventHandler(
+	reg, err := i.SharedIndexInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.filterFunc,
 			Handler:    handler,
 		},
 	)
+	if err != nil {
+		return reg, err
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.registrations = append(i.registrations, reg)
+	return reg, nil
 }
 
 // AddEventHandlerWithResyncPeriod adds an event handler with resync period.
 func (i *ProviderConfigFilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
-	return i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
+	reg, err := i.SharedIndexInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: i.filterFunc,
 			Handler:    handler,
 		},
 		resyncPeriod,
 	)
+	if err != nil {
+		return reg, err
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.registrations = append(i.registrations, reg)
+	return reg, nil
+}
+
+// AddEventHandlerWithOptions adds an event handler with options.
+func (i *ProviderConfigFilteredInformer) AddEventHandlerWithOptions(handler cache.ResourceEventHandler, options cache.HandlerOptions) (cache.ResourceEventHandlerRegistration, error) {
+	reg, err := i.SharedIndexInformer.AddEventHandlerWithOptions(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: i.filterFunc,
+			Handler:    handler,
+		},
+		options,
+	)
+	if err != nil {
+		return reg, err
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.registrations = append(i.registrations, reg)
+	return reg, nil
 }
 
 // filterFunc filters objects based on the configured key and value.
 func (i *ProviderConfigFilteredInformer) filterFunc(obj any) bool {
-	if i.stopped.Load() {
-		return false
-	}
 	return isObjectMatchingValue(obj, i.filterKey, i.filterValue, i.allowMissing)
 }
 
@@ -92,12 +122,42 @@ func (i *ProviderConfigFilteredInformer) GetIndexer() cache.Indexer {
 	}
 }
 
-// RemoveEventHandlers stops all event handlers from receiving events (legacy cleanup).
-func (i *ProviderConfigFilteredInformer) RemoveEventHandlers() {
-	i.stopped.Store(true)
+// RemoveEventHandler removes an event handler. The handle is also dropped from
+// the tracked set so that Cleanup does not try to remove it a second time.
+func (i *ProviderConfigFilteredInformer) RemoveEventHandler(handle cache.ResourceEventHandlerRegistration) error {
+	i.mu.Lock()
+	for idx, reg := range i.registrations {
+		if reg == handle {
+			i.registrations = append(i.registrations[:idx], i.registrations[idx+1:]...)
+			break
+		}
+	}
+	i.mu.Unlock()
+
+	return i.SharedIndexInformer.RemoveEventHandler(handle)
 }
 
-// Cleanup stops all event handlers from receiving events (generic framework cleanup).
+// Cleanup deregisters every event handler that was added through this filtered
+// informer, so the underlying shared informer stops delivering events to them.
+//
+// Note: the underlying RemoveEventHandler is asynchronous; it stops queueing new
+// events but does not wait for already-queued events to finish executing.
+// Cleanup is idempotent and safe to call concurrently.
 func (i *ProviderConfigFilteredInformer) Cleanup() {
-	i.RemoveEventHandlers()
+	i.mu.Lock()
+	regs := i.registrations
+	i.registrations = nil
+	i.mu.Unlock()
+
+	for _, reg := range regs {
+		// RemoveEventHandler is documented as idempotent and thread-safe. An error
+		// here means the handler is already gone, which is the desired end state.
+		_ = i.SharedIndexInformer.RemoveEventHandler(reg)
+	}
+}
+
+// HasSyncedChecker returns a checker that can be used to check if the informer has synced.
+// Note: This is a new method required by client-go 1.36.
+func (i *ProviderConfigFilteredInformer) HasSyncedChecker() cache.DoneChecker {
+	return i.SharedIndexInformer.HasSyncedChecker()
 }
