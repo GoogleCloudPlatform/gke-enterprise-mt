@@ -19,8 +19,12 @@ type ProviderConfigFilteredInformer struct {
 	registrations []cache.ResourceEventHandlerRegistration
 }
 
+var globalMu sync.Mutex
+
 // NewFilteredInformer creates a new generic FilteredInformer (internally named ProviderConfigFilteredInformer for compatibility).
 func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterValue string, allowMissing bool) *ProviderConfigFilteredInformer {
+	globalMu.Lock()
+	defer globalMu.Unlock()
 	indexers := informer.GetIndexer().GetIndexers()
 	if indexers != nil {
 		if _, ok := indexers[filterKey]; !ok {
@@ -36,7 +40,7 @@ func NewFilteredInformer(informer cache.SharedIndexInformer, filterKey, filterVa
 }
 
 // NewProviderConfigFilteredInformer creates a new ProviderConfigFilteredInformer (legacy constructor).
-func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) cache.SharedIndexInformer {
+func NewProviderConfigFilteredInformer(informer cache.SharedIndexInformer, providerConfigName string) *ProviderConfigFilteredInformer {
 	return NewFilteredInformer(informer, providerConfigLabel, providerConfigName, false)
 }
 
