@@ -7,45 +7,41 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
 func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		objectsInCache      []any
-		queryName           string
-		expectedItemNames   []string
+		desc              string
+		objectsInCache    []any
+		queryName         string
+		expectedItemNames []string
 	}{
 		{
-			desc:                "Retrieve items by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve items by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj2"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "cs654321-edf-namespace", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "cs654321-edf-namespace", Name: "obj1"},
 			},
 			queryName:         "obj1",
 			expectedItemNames: []string{"obj1"},
 		},
 		{
-			desc:                "Retrieve multiple items by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve multiple items by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
 			},
 			queryName:         "obj1",
 			expectedItemNames: []string{"obj1", "obj1"},
 		},
 		{
-			desc:                "No items when index key does not match",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "No items when index key does not match",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
 			},
 			queryName:         "nonexistent",
 			expectedItemNames: []string{},
@@ -55,7 +51,10 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 	indexName := "byName"
 	indexers := cache.Indexers{
 		indexName: func(obj any) ([]string, error) {
-			metaObj, _ := meta.Accessor(obj)
+			metaObj, err := meta.Accessor(obj)
+			if err != nil {
+				return nil, err
+			}
 			return []string{metaObj.GetName()}, nil
 		},
 	}
@@ -68,7 +67,7 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 			nsCache := &providerConfigFilteredCache{
 				Indexer:      indexer,
 				filterKey:    providerConfigLabel,
-				filterValue:  tc.cacheProviderConfig,
+				filterValue:  "cs123456-abc",
 				allowMissing: false,
 			}
 
@@ -78,15 +77,18 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 
 			items, err := nsCache.ByIndex(indexName, tc.queryName)
 			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+				t.Fatalf("ByIndex(%s, %s) returned unexpected error: %v", indexName, tc.queryName, err)
 			}
 			if len(items) != len(tc.expectedItemNames) {
-				t.Errorf("Expected %d items, got %d", len(tc.expectedItemNames), len(items))
+				t.Errorf("ByIndex(%s, %s) returned %d items, want %d", indexName, tc.queryName, len(items), len(tc.expectedItemNames))
 			}
 
 			gotNames := make([]string, 0, len(items))
 			for _, item := range items {
-				metaObj, _ := meta.Accessor(item)
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned unexpected error: %v", item, err)
+				}
 				gotNames = append(gotNames, metaObj.GetName())
 			}
 			sort.Strings(gotNames)
@@ -94,7 +96,7 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 			copy(expected, tc.expectedItemNames)
 			sort.Strings(expected)
 			if !reflect.DeepEqual(gotNames, expected) {
-				t.Errorf("Expected item names %v, got %v", expected, gotNames)
+				t.Errorf("ByIndex(%s, %s) = %v, want %v", indexName, tc.queryName, gotNames, expected)
 			}
 		})
 	}
@@ -102,50 +104,45 @@ func TestProviderConfigFilteredCache_ByIndex(t *testing.T) {
 
 func TestProviderConfigFilteredCache_Index(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		objectsInCache      []any
-		queryObjName        string
-		expectedItemNames   []string
-		expectedErr         error
+		desc              string
+		objectsInCache    []any
+		queryObjName      string
+		expectedItemNames []string
+		expectedErr       error
 	}{
 		{
-			desc:                "Retrieve items by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve items by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj2"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "cs654321-edf-namespace", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "cs654321-edf-namespace", Name: "obj1"},
 			},
 			queryObjName:      "obj1",
 			expectedItemNames: []string{"obj1"},
 		},
 		{
-			desc:                "Retrieve multiple items by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve multiple items by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
 			},
 			queryObjName:      "obj1",
 			expectedItemNames: []string{"obj1", "obj1"},
 		},
 		{
-			desc:                "No items when index key does not match",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "No items when index key does not match",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
 			},
 			queryObjName:      "nonexistent",
 			expectedItemNames: []string{},
 		},
 		{
-			desc:                "Error from indexer",
-			cacheProviderConfig: "cs123456-abc",
-			queryObjName:        "obj1",
+			desc:         "Error from indexer",
+			queryObjName: "obj1",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "cs123456-abc-namespace", Name: "obj1"},
 			},
 			expectedErr: errors.New("synthetic index error"),
 		},
@@ -153,7 +150,10 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 
 	indexName := "byName"
 	indexFunc := func(obj any) ([]string, error) {
-		metaObj, _ := meta.Accessor(obj)
+		metaObj, err := meta.Accessor(obj)
+		if err != nil {
+			return nil, err
+		}
 		return []string{metaObj.GetName()}, nil
 	}
 	indexers := cache.Indexers{indexName: indexFunc}
@@ -170,36 +170,36 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 			nsCache := &providerConfigFilteredCache{
 				Indexer:      indexer,
 				filterKey:    providerConfigLabel,
-				filterValue:  tc.cacheProviderConfig,
+				filterValue:  "cs123456-abc",
 				allowMissing: false,
 			}
 
 			for _, obj := range tc.objectsInCache {
 				realIndexer.Add(obj)
 			}
-			queryObj := &v1.ObjectMeta{Name: tc.queryObjName}
+			queryObj := &metav1.ObjectMeta{Name: tc.queryObjName}
 
 			items, err := nsCache.Index(indexName, queryObj)
 
 			if tc.expectedErr != nil {
-				if err == nil {
-					t.Fatalf("Expected error %v, got nil", tc.expectedErr)
-				}
-				if err.Error() != tc.expectedErr.Error() {
-					t.Errorf("Expected error '%v', got '%v'", tc.expectedErr, err)
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("Index(%s, %s) returned error '%v', want '%v'", indexName, tc.queryObjName, err, tc.expectedErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+				t.Fatalf("Index(%s, %s) returned unexpected error: %v", indexName, tc.queryObjName, err)
 			}
 			if len(items) != len(tc.expectedItemNames) {
-				t.Errorf("Expected %d items, got %d", len(tc.expectedItemNames), len(items))
+				t.Errorf("Index(%s, %s) returned %d items, want %d", indexName, tc.queryObjName, len(items), len(tc.expectedItemNames))
 			}
 
 			gotNames := make([]string, 0, len(items))
 			for _, item := range items {
-				metaObj, _ := meta.Accessor(item)
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned unexpected error: %v", item, err)
+				}
 				gotNames = append(gotNames, metaObj.GetName())
 			}
 			sort.Strings(gotNames)
@@ -207,7 +207,7 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 			copy(expected, tc.expectedItemNames)
 			sort.Strings(expected)
 			if !reflect.DeepEqual(gotNames, expected) {
-				t.Errorf("Expected item names %v, got %v", expected, gotNames)
+				t.Errorf("Index(%s, %s) = %v, want %v", indexName, tc.queryObjName, gotNames, expected)
 			}
 		})
 	}
@@ -215,40 +215,36 @@ func TestProviderConfigFilteredCache_Index(t *testing.T) {
 
 func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		objectsInCache      []any
-		queryName           string
-		expectedKeys        []string
-		expectedErr         error
+		desc           string
+		objectsInCache []any
+		queryName      string
+		expectedKeys   []string
+		expectedErr    error
 	}{
 		{
-			desc:                "Retrieve keys by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve keys by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj2"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
 			},
 			queryName:    "obj1",
 			expectedKeys: []string{"ns1/obj1"},
 		},
 		{
-			desc:                "Retrieve multiple keys by index in provider config",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "Retrieve multiple keys by index in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns2", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns3", Name: "obj1"},
 			},
 			queryName:    "obj1",
 			expectedKeys: []string{"ns1/obj1", "ns2/obj1"},
 		},
 		{
-			desc:                "No keys when index key does not match",
-			cacheProviderConfig: "cs123456-abc",
+			desc: "No keys when index key does not match",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Name: "obj1"},
 			},
 			queryName:    "nonexistent",
 			expectedKeys: []string{},
@@ -258,7 +254,10 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 	indexName := "byName"
 	indexers := cache.Indexers{
 		indexName: func(obj any) ([]string, error) {
-			metaObj, _ := meta.Accessor(obj)
+			metaObj, err := meta.Accessor(obj)
+			if err != nil {
+				return nil, err
+			}
 			return []string{metaObj.GetName()}, nil
 		},
 		providerConfigLabel: NewLabelIndexFunc(providerConfigLabel),
@@ -272,7 +271,7 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 			nsCache := &providerConfigFilteredCache{
 				Indexer:      indexer,
 				filterKey:    providerConfigLabel,
-				filterValue:  tc.cacheProviderConfig,
+				filterValue:  "cs123456-abc",
 				allowMissing: false,
 			}
 
@@ -282,32 +281,33 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 
 			keys, err := nsCache.IndexKeys(indexName, tc.queryName)
 			if tc.expectedErr != nil {
-				if err == nil {
-					t.Fatalf("Expected error %v, got nil", tc.expectedErr)
-				}
-				if err.Error() != tc.expectedErr.Error() {
-					t.Errorf("Expected error '%v', got '%v'", tc.expectedErr, err)
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("IndexKeys(%s, %s) returned error '%v', want '%v'", indexName, tc.queryName, err, tc.expectedErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+				t.Fatalf("IndexKeys(%s, %s) returned unexpected error: %v", indexName, tc.queryName, err)
 			}
 			sort.Strings(keys)
 			expected := make([]string, len(tc.expectedKeys))
 			copy(expected, tc.expectedKeys)
 			sort.Strings(expected)
 			if !reflect.DeepEqual(keys, expected) {
-				t.Errorf("Expected keys %v, got %v", expected, keys)
+				t.Errorf("IndexKeys(%s, %s) = %v, want %v", indexName, tc.queryName, keys, expected)
 			}
 		})
 	}
 
+	// Test fallback when provider config index fails or is missing
 	t.Run("fallback without provider config index", func(t *testing.T) {
 		t.Parallel()
 		indexersWithoutPC := cache.Indexers{
 			indexName: func(obj any) ([]string, error) {
-				metaObj, _ := meta.Accessor(obj)
+				metaObj, err := meta.Accessor(obj)
+				if err != nil {
+					return nil, err
+				}
 				return []string{metaObj.GetName()}, nil
 			},
 		}
@@ -319,8 +319,8 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 			allowMissing: false,
 		}
 
-		obj1 := &v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"}
-		obj2 := &v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns2", Name: "obj1"}
+		obj1 := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns1", Name: "obj1"}
+		obj2 := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns2", Name: "obj1"}
 		indexer.Add(obj1)
 		indexer.Add(obj2)
 
@@ -330,32 +330,29 @@ func TestProviderConfigFilteredCache_IndexKeys(t *testing.T) {
 		}
 		expected := []string{"ns1/obj1"}
 		if !reflect.DeepEqual(keys, expected) {
-			t.Errorf("Expected keys %v, got %v", expected, keys)
+			t.Errorf("IndexKeys = %v, want %v", keys, expected)
 		}
 	})
 }
 
 func TestProviderConfigFilteredCache_List(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		objectsInCache      []any
-		expectedItemNames   []string
+		desc              string
+		objectsInCache    []any
+		expectedItemNames []string
 	}{
 		{
-			desc:                "List items in the provider config",
-			cacheProviderConfig: "p123456-abc",
+			desc: "List items in the provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj2"},
 			},
 			expectedItemNames: []string{"obj1"},
 		},
 		{
-			desc:                "List no items when provider config has no objects",
-			cacheProviderConfig: "p123456-abc",
+			desc: "List no items when provider config has no objects",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj1"},
 			},
 			expectedItemNames: []string{},
 		},
@@ -387,7 +384,7 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 					nsCache := &providerConfigFilteredCache{
 						Indexer:      indexer,
 						filterKey:    providerConfigLabel,
-						filterValue:  tc.cacheProviderConfig,
+						filterValue:  "p123456-abc",
 						allowMissing: false,
 					}
 
@@ -397,12 +394,15 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 
 					items := nsCache.List()
 					if len(items) != len(tc.expectedItemNames) {
-						t.Errorf("Expected %d items, got %d", len(tc.expectedItemNames), len(items))
+						t.Errorf("List() returned %d items, want %d", len(items), len(tc.expectedItemNames))
 					}
 
 					gotNames := make([]string, 0, len(items))
 					for _, item := range items {
-						metaObj, _ := meta.Accessor(item)
+						metaObj, err := meta.Accessor(item)
+						if err != nil {
+							t.Fatalf("meta.Accessor(%v) returned unexpected error: %v", item, err)
+						}
 						gotNames = append(gotNames, metaObj.GetName())
 					}
 					sort.Strings(gotNames)
@@ -411,7 +411,7 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 					copy(expected, tc.expectedItemNames)
 					sort.Strings(expected)
 					if !reflect.DeepEqual(gotNames, expected) {
-						t.Errorf("Expected item names %v, got %v", expected, gotNames)
+						t.Errorf("List() = %v, want %v", gotNames, expected)
 					}
 				})
 			}
@@ -421,34 +421,30 @@ func TestProviderConfigFilteredCache_List(t *testing.T) {
 
 func TestProviderConfigFilteredCache_ListKeys(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		objectsInCache      []any
-		expectedKeys        []string
+		desc           string
+		objectsInCache []any
+		expectedKeys   []string
 	}{
 		{
-			desc:                "List keys for objects in provider config",
-			cacheProviderConfig: "p123456-abc",
+			desc: "List keys for objects in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Namespace: "ns1", Name: "obj1"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Namespace: "ns2", Name: "obj2"},
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Namespace: "ns1", Name: "obj3"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Namespace: "ns1", Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Namespace: "ns2", Name: "obj2"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p123456-abc"}, Namespace: "ns1", Name: "obj3"},
 			},
 			expectedKeys: []string{"ns1/obj1", "ns1/obj3"},
 		},
 		{
-			desc:                "List no keys when no objects in provider config",
-			cacheProviderConfig: "p123456-abc",
+			desc: "List no keys when no objects in provider config",
 			objectsInCache: []any{
-				&v1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj1"},
+				&metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "p654321-edf"}, Name: "obj1"},
 			},
 			expectedKeys: []string{},
 		},
 		{
-			desc:                "List no keys when cache is empty",
-			cacheProviderConfig: "p123456-abc",
-			objectsInCache:      []any{},
-			expectedKeys:        []string{},
+			desc:           "List no keys when cache is empty",
+			objectsInCache: []any{},
+			expectedKeys:   []string{},
 		},
 	}
 
@@ -478,7 +474,7 @@ func TestProviderConfigFilteredCache_ListKeys(t *testing.T) {
 					nsCache := &providerConfigFilteredCache{
 						Indexer:      indexer,
 						filterKey:    providerConfigLabel,
-						filterValue:  tc.cacheProviderConfig,
+						filterValue:  "p123456-abc",
 						allowMissing: false,
 					}
 					for _, obj := range tc.objectsInCache {
@@ -490,7 +486,7 @@ func TestProviderConfigFilteredCache_ListKeys(t *testing.T) {
 					copy(expected, tc.expectedKeys)
 					sort.Strings(expected)
 					if !reflect.DeepEqual(keys, expected) {
-						t.Errorf("Expected keys %v, got %v", expected, keys)
+						t.Errorf("ListKeys() = %v, want %v", keys, expected)
 					}
 				})
 			}
@@ -505,6 +501,7 @@ type mockIndexer struct {
 	getByKeyErr    error
 	getByKeyExists bool
 	indexErr       error
+	byIndexErr     error
 }
 
 func (m *mockIndexer) Index(indexName string, obj any) ([]any, error) {
@@ -512,6 +509,13 @@ func (m *mockIndexer) Index(indexName string, obj any) ([]any, error) {
 		return nil, m.indexErr
 	}
 	return m.Indexer.Index(indexName, obj)
+}
+
+func (m *mockIndexer) ByIndex(indexName, indexKey string) ([]any, error) {
+	if m.byIndexErr != nil {
+		return nil, m.byIndexErr
+	}
+	return m.Indexer.ByIndex(indexName, indexKey)
 }
 
 func (m *mockIndexer) GetByKey(key string) (any, bool, error) {
@@ -529,20 +533,18 @@ func (m *mockIndexer) GetByKey(key string) (any, bool, error) {
 
 func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		queryKey            string
-		objectsInCache      []any
-		expectedExist       bool
-		mockIndexerExists   bool
-		expectedName        string
-		expectedErr         error
+		desc              string
+		queryKey          string
+		objectsInCache    []any
+		expectedExist     bool
+		mockIndexerExists bool
+		expectedName      string
+		expectedErr       error
 	}{
 		{
-			desc:                "Get existing item by key in provider config",
-			cacheProviderConfig: "p123456-abc",
-			queryKey:            "p123456-abc-namespace/obj1",
-			objectsInCache: []any{&v1.ObjectMeta{
+			desc:     "Get existing item by key in provider config",
+			queryKey: "p123456-abc-namespace/obj1",
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -551,10 +553,9 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 			expectedName:  "obj1",
 		},
 		{
-			desc:                "Item exists but in different provider config",
-			cacheProviderConfig: "p123456-abc",
-			queryKey:            "p654321-edf-namespace/obj1",
-			objectsInCache: []any{&v1.ObjectMeta{
+			desc:     "Item exists but in different provider config",
+			queryKey: "p654321-edf-namespace/obj1",
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p654321-edf"},
 				Namespace: "p654321-edf-namespace",
 				Name:      "obj1",
@@ -562,9 +563,8 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 			expectedExist: false,
 		},
 		{
-			desc:                "Item does not exist",
-			cacheProviderConfig: "p123456-abc",
-			objectsInCache: []any{&v1.ObjectMeta{
+			desc: "Item does not exist",
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -573,10 +573,9 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 			expectedExist: false,
 		},
 		{
-			desc:                "Error from indexer, exists true",
-			cacheProviderConfig: "p123456-abc",
-			queryKey:            "p123456-abc-namespace/obj1",
-			objectsInCache: []any{&v1.ObjectMeta{
+			desc:     "Error from indexer, exists true",
+			queryKey: "p123456-abc-namespace/obj1",
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -586,10 +585,9 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 			expectedErr:       errors.New("synthetic getbykey error"),
 		},
 		{
-			desc:                "Error from indexer, exists false",
-			cacheProviderConfig: "p123456-abc",
-			queryKey:            "p123456-abc-namespace/obj2",
-			objectsInCache: []any{&v1.ObjectMeta{
+			desc:     "Error from indexer, exists false",
+			queryKey: "p123456-abc-namespace/obj2",
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -611,7 +609,7 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 			nsCache := &providerConfigFilteredCache{
 				Indexer:      indexer,
 				filterKey:    providerConfigLabel,
-				filterValue:  tc.cacheProviderConfig,
+				filterValue:  "p123456-abc",
 				allowMissing: false,
 			}
 
@@ -621,28 +619,28 @@ func TestProviderConfigFilteredCache_GetByKey(t *testing.T) {
 
 			item, exists, err := nsCache.GetByKey(tc.queryKey)
 			if tc.expectedErr != nil {
-				if err == nil {
-					t.Fatalf("Expected error %v, got nil", tc.expectedErr)
-				}
-				if err.Error() != tc.expectedErr.Error() {
-					t.Errorf("Expected error '%v', got '%v'", tc.expectedErr, err)
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("GetByKey(%s) returned error '%v', want '%v'", tc.queryKey, err, tc.expectedErr)
 				}
 				if exists != tc.expectedExist {
-					t.Errorf("Expected exists to be %v, got %v", tc.expectedExist, exists)
+					t.Errorf("GetByKey(%s) returned exists %v, want %v", tc.queryKey, exists, tc.expectedExist)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+				t.Fatalf("GetByKey(%s) returned unexpected error: %v", tc.queryKey, err)
 			}
 			if exists != tc.expectedExist {
-				t.Errorf("Expected exists to be %v, got %v", tc.expectedExist, exists)
+				t.Errorf("GetByKey(%s) returned exists %v, want %v", tc.queryKey, exists, tc.expectedExist)
 			}
 			if exists && item != nil {
-				metaObj, _ := meta.Accessor(item)
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned unexpected error: %v", item, err)
+				}
 				if metaObj.GetName() != tc.expectedName {
-					t.Errorf("Expected item name %s, got %s", tc.expectedName, metaObj.GetName())
+					t.Errorf("GetByKey(%s) returned item name %s, want %s", tc.queryKey, metaObj.GetName(), tc.expectedName)
 				}
 			}
 		})
@@ -654,22 +652,20 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 	keyFuncErr := errors.New("object has no meta: object does not implement the Object interfaces")
 
 	testCases := []struct {
-		desc                string
-		cacheProviderConfig string
-		queryObj            any
-		objectsInCache      []any
-		expectedExist       bool
-		expectedName        string
-		expectedErr         error
+		desc           string
+		queryObj       any
+		objectsInCache []any
+		expectedExist  bool
+		expectedName   string
+		expectedErr    error
 	}{
 		{
-			desc:                "Get existing item in provider config",
-			cacheProviderConfig: "p123456-abc",
-			queryObj: &v1.ObjectMeta{
+			desc: "Get existing item in provider config",
+			queryObj: &metav1.ObjectMeta{
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
 			},
-			objectsInCache: []any{&v1.ObjectMeta{
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -678,13 +674,12 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 			expectedName:  "obj1",
 		},
 		{
-			desc:                "Item exists but in different provider config",
-			cacheProviderConfig: "p123456-abc",
-			queryObj: &v1.ObjectMeta{
+			desc: "Item exists but in different provider config",
+			queryObj: &metav1.ObjectMeta{
 				Namespace: "p654321-edf-namespace",
 				Name:      "obj1",
 			},
-			objectsInCache: []any{&v1.ObjectMeta{
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p654321-edf"},
 				Namespace: "p654321-edf-namespace",
 				Name:      "obj1",
@@ -692,13 +687,12 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 			expectedExist: false,
 		},
 		{
-			desc:                "Item does not exist",
-			cacheProviderConfig: "p123456-abc",
-			queryObj: &v1.ObjectMeta{
+			desc: "Item does not exist",
+			queryObj: &metav1.ObjectMeta{
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj2",
 			},
-			objectsInCache: []any{&v1.ObjectMeta{
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -706,20 +700,18 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 			expectedExist: false,
 		},
 		{
-			desc:                "Error from key func",
-			cacheProviderConfig: "p123456-abc",
-			queryObj:            "a string is not a valid object",
-			expectedExist:       false,
-			expectedErr:         keyFuncErr,
+			desc:          "Error from key func",
+			queryObj:      "a string is not a valid object",
+			expectedExist: false,
+			expectedErr:   keyFuncErr,
 		},
 		{
-			desc:                "Error from GetByKey",
-			cacheProviderConfig: "p123456-abc",
-			queryObj: &v1.ObjectMeta{
+			desc: "Error from GetByKey",
+			queryObj: &metav1.ObjectMeta{
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
 			},
-			objectsInCache: []any{&v1.ObjectMeta{
+			objectsInCache: []any{&metav1.ObjectMeta{
 				Labels:    map[string]string{providerConfigLabel: "p123456-abc"},
 				Namespace: "p123456-abc-namespace",
 				Name:      "obj1",
@@ -740,7 +732,7 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 			nsCache := &providerConfigFilteredCache{
 				Indexer:      indexer,
 				filterKey:    providerConfigLabel,
-				filterValue:  tc.cacheProviderConfig,
+				filterValue:  "p123456-abc",
 				allowMissing: false,
 			}
 
@@ -751,30 +743,254 @@ func TestProviderConfigFilteredCache_Get(t *testing.T) {
 			item, exists, err := nsCache.Get(tc.queryObj)
 
 			if tc.expectedErr != nil {
-				if err == nil {
-					t.Fatalf("Expected error %v, got nil", tc.expectedErr)
-				}
 				if err.Error() != tc.expectedErr.Error() {
-					t.Errorf("Expected error '%v', got '%v'", tc.expectedErr, err)
+					t.Errorf("Get(%v) returned error '%v', want '%v'", tc.queryObj, err, tc.expectedErr)
 				}
 				if exists != tc.expectedExist {
-					t.Errorf("Expected exists to be %v, got %v", tc.expectedExist, exists)
+					t.Errorf("Get(%v) returned exists %v, want %v", tc.queryObj, exists, tc.expectedExist)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+				t.Fatalf("Get(%v) returned unexpected error: %v", tc.queryObj, err)
 			}
 			if exists != tc.expectedExist {
-				t.Errorf("Expected exists to be %v, got %v", tc.expectedExist, exists)
+				t.Errorf("Get(%v) returned exists %v, want %v", tc.queryObj, exists, tc.expectedExist)
 			}
 			if exists && item != nil {
-				metaObj, _ := meta.Accessor(item)
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned unexpected error: %v", item, err)
+				}
 				if metaObj.GetName() != tc.expectedName {
-					t.Errorf("Expected item name %s, got %s", tc.expectedName, metaObj.GetName())
+					t.Errorf("Get(%v) returned item name %s, want %s", tc.queryObj, metaObj.GetName(), tc.expectedName)
 				}
 			}
 		})
+	}
+}
+
+type indexerWithLSSRV struct {
+	cache.Indexer
+	rv string
+}
+
+func (i *indexerWithLSSRV) LastStoreSyncResourceVersion() string {
+	return i.rv
+}
+
+func TestFilteredCache_LastStoreSyncResourceVersion(t *testing.T) {
+	testCases := []struct {
+		name    string
+		indexer cache.Indexer
+		wantRV  string
+	}{
+		{
+			name:    "indexer-with-lssrv",
+			indexer: &indexerWithLSSRV{Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil), rv: "12345"},
+			wantRV:  "12345",
+		},
+		{
+			name:    "indexer-without-lssrv",
+			indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+			wantRV:  "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &providerConfigFilteredCache{
+				Indexer:      tc.indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "test-pc",
+				allowMissing: false,
+			}
+			if got := fc.LastStoreSyncResourceVersion(); got != tc.wantRV {
+				t.Errorf("LastStoreSyncResourceVersion() = %q, want %q", got, tc.wantRV)
+			}
+		})
+	}
+}
+
+type indexerWithBookmark struct {
+	cache.Indexer
+	bookmarkedRV string
+}
+
+func (i *indexerWithBookmark) Bookmark(rv string) {
+	i.bookmarkedRV = rv
+}
+
+func TestFilteredCache_Bookmark(t *testing.T) {
+	testCases := []struct {
+		name                string
+		indexer             cache.Indexer
+		wantBookmark        bool
+		wantBookmarkedValue string
+	}{
+		{
+			name:                "indexer-with-bookmark",
+			indexer:             &indexerWithBookmark{Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil)},
+			wantBookmark:        true,
+			wantBookmarkedValue: "123",
+		},
+		{
+			name:         "indexer-without-bookmark",
+			indexer:      cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+			wantBookmark: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &providerConfigFilteredCache{
+				Indexer:      tc.indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "test-pc",
+				allowMissing: false,
+			}
+			fc.Bookmark("123")
+
+			if tc.wantBookmark {
+				if got := tc.indexer.(*indexerWithBookmark).bookmarkedRV; got != tc.wantBookmarkedValue {
+					t.Errorf("Bookmark() did not bookmark resource version, got %q, want %q", got, tc.wantBookmarkedValue)
+				}
+			}
+		})
+	}
+}
+
+// TestProviderConfigFilteredCache_List_AllowMissing verifies that List honors
+// allowMissing even when the label index is registered.
+//
+// Objects without the filter label are not indexed under any value, so the
+// index fast path alone cannot answer an allowMissing query. List must fall
+// back to a full scan in that case, or unlabeled objects go missing.
+func TestProviderConfigFilteredCache_List_AllowMissing(t *testing.T) {
+	matching := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs123456-abc"}, Namespace: "ns", Name: "matching"}
+	otherValue := &metav1.ObjectMeta{Labels: map[string]string{providerConfigLabel: "cs654321-edf"}, Namespace: "ns", Name: "other-value"}
+	unlabeled := &metav1.ObjectMeta{Namespace: "ns", Name: "unlabeled"}
+
+	testCases := []struct {
+		desc              string
+		allowMissing      bool
+		expectedItemNames []string
+	}{
+		{
+			desc:              "allowMissing includes objects without the label",
+			allowMissing:      true,
+			expectedItemNames: []string{"matching", "unlabeled"},
+		},
+		{
+			desc:              "not allowMissing excludes objects without the label",
+			allowMissing:      false,
+			expectedItemNames: []string{"matching"},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			// Register the label index so the fast path in List is available.
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				providerConfigLabel: NewLabelIndexFunc(providerConfigLabel),
+			})
+			for _, obj := range []any{matching, otherValue, unlabeled} {
+				if err := indexer.Add(obj); err != nil {
+					t.Fatalf("indexer.Add(%v) returned an unexpected error: %v", obj, err)
+				}
+			}
+
+			pcCache := &providerConfigFilteredCache{
+				Indexer:      indexer,
+				filterKey:    providerConfigLabel,
+				filterValue:  "cs123456-abc",
+				allowMissing: tc.allowMissing,
+			}
+
+			var gotNames []string
+			for _, item := range pcCache.List() {
+				metaObj, err := meta.Accessor(item)
+				if err != nil {
+					t.Fatalf("meta.Accessor(%v) returned an unexpected error: %v", item, err)
+				}
+				gotNames = append(gotNames, metaObj.GetName())
+			}
+			sort.Strings(gotNames)
+
+			if !reflect.DeepEqual(gotNames, tc.expectedItemNames) {
+				t.Errorf("List() returned %v, want %v", gotNames, tc.expectedItemNames)
+			}
+		})
+	}
+}
+
+func TestFilteredCache_MultiCache_LastStoreSyncResourceVersion(t *testing.T) {
+	underlying := &indexerWithLSSRV{
+		Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+		rv:      "sync-rv-999",
+	}
+
+	fc1 := &providerConfigFilteredCache{
+		Indexer:      underlying,
+		filterKey:    providerConfigLabel,
+		filterValue:  "provider-config-1",
+		allowMissing: false,
+	}
+	fc2 := &providerConfigFilteredCache{
+		Indexer:      underlying,
+		filterKey:    providerConfigLabel,
+		filterValue:  "provider-config-2",
+		allowMissing: false,
+	}
+
+	// Verify that both filtered caches return the same resource version as the underlying indexer,
+	// unaffected by the provider config filtering.
+	if got1 := fc1.LastStoreSyncResourceVersion(); got1 != underlying.rv {
+		t.Errorf("fc1.LastStoreSyncResourceVersion() = %q, want %q", got1, underlying.rv)
+	}
+	if got2 := fc2.LastStoreSyncResourceVersion(); got2 != underlying.rv {
+		t.Errorf("fc2.LastStoreSyncResourceVersion() = %q, want %q", got2, underlying.rv)
+	}
+	if fc1.LastStoreSyncResourceVersion() != fc2.LastStoreSyncResourceVersion() {
+		t.Errorf("expected fc1 and fc2 to have identical LastStoreSyncResourceVersion, got %q vs %q",
+			fc1.LastStoreSyncResourceVersion(), fc2.LastStoreSyncResourceVersion())
+	}
+}
+
+func TestFilteredCache_MultiCache_Bookmark(t *testing.T) {
+	underlying := &indexerWithBookmark{
+		Indexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil),
+	}
+
+	fc1 := &providerConfigFilteredCache{
+		Indexer:      underlying,
+		filterKey:    providerConfigLabel,
+		filterValue:  "provider-config-1",
+		allowMissing: false,
+	}
+	fc2 := &providerConfigFilteredCache{
+		Indexer:      underlying,
+		filterKey:    providerConfigLabel,
+		filterValue:  "provider-config-2",
+		allowMissing: false,
+	}
+
+	testRV := "bookmark-rv-456"
+	fc1.Bookmark(testRV)
+
+	// Bookmark called on fc1 should be reflected on the shared underlying indexer
+	if underlying.bookmarkedRV != testRV {
+		t.Errorf("underlying indexer bookmarkedRV = %q, want %q", underlying.bookmarkedRV, testRV)
+	}
+
+	// Another bookmark call on fc2 updates the shared underlying indexer
+	updatedRV := "bookmark-rv-789"
+	fc2.Bookmark(updatedRV)
+	if underlying.bookmarkedRV != updatedRV {
+		t.Errorf("underlying indexer bookmarkedRV after fc2 bookmark = %q, want %q", underlying.bookmarkedRV, updatedRV)
 	}
 }

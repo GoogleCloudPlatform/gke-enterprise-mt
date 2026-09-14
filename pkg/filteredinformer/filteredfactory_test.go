@@ -68,6 +68,16 @@ func TestFilteredSharedInformerFactory_Core_Nodes(t *testing.T) {
 			t.Errorf("Expected allowMissing %t, got %t", allowMissing, filteredInf.allowMissing)
 		}
 	}
+
+	lister := nodeInformer.Lister()
+	if lister == nil {
+		t.Error("Expected nodeInformer.Lister() to be non-nil")
+	}
+
+	typedInformer := nodeInformer.TypedInformer()
+	if typedInformer == nil {
+		t.Fatal("Expected nodeInformer.TypedInformer() to be non-nil")
+	}
 }
 
 func TestFilteredSharedInformerFactory_Coordination_Leases(t *testing.T) {
@@ -102,6 +112,16 @@ func TestFilteredSharedInformerFactory_Coordination_Leases(t *testing.T) {
 		if filteredInf.allowMissing != allowMissing {
 			t.Errorf("Expected allowMissing %t, got %t", allowMissing, filteredInf.allowMissing)
 		}
+	}
+
+	lister := leaseInformer.Lister()
+	if lister == nil {
+		t.Error("Expected leaseInformer.Lister() to be non-nil")
+	}
+
+	typedInformer := leaseInformer.TypedInformer()
+	if typedInformer == nil {
+		t.Fatal("Expected leaseInformer.TypedInformer() to be non-nil")
 	}
 }
 
