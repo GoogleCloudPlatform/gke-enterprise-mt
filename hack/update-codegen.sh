@@ -58,56 +58,56 @@ echo "Installing register-gen..."
 go install "${CODEGEN_PKG}/cmd/register-gen" >/dev/null
 REGISTER_GEN="${GOBIN}/register-gen"
 
-if [ -d "${REPO_ROOT}/pkg/apis/providerconfig/v1_kubernetes_apis" ]; then
+if [ -d "${REPO_ROOT}/pkg/apis/providerconfig/v1" ]; then
   echo "Performing code generation for ProviderConfig CRD"
   cd "${REPO_ROOT}"
 
   echo "Generating register for ProviderConfig"
   "${REGISTER_GEN}" \
-    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis \
+    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1 \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
     --output-file-base zz_generated.register
 
   "${CODEGEN_PKG}"/generate-groups.sh \
     "deepcopy,client,informer,lister" \
     github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfig/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
-    "providerconfig:v1_kubernetes_apis" \
+    "providerconfig:v1" \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
 
-  echo "Generating openapi for ProviderConfig v1_kubernetes_apis"
+  echo "Generating openapi for ProviderConfig v1"
   "${OPENAPI_PKG}"/openapi-gen \
     --output-file zz_generated.openapi.go \
-    --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis \
-    --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis" \
+    --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1 \
+    --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1" \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
-    github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1_kubernetes_apis
+    github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1
 else
-  echo "Directory pkg/apis/providerconfig/v1_kubernetes_apis not found. Skipping ProviderConfig codegen."
+  echo "Directory pkg/apis/providerconfig/v1 not found. Skipping ProviderConfig codegen."
 fi
 
-if [ -d "${REPO_ROOT}/pkg/apis/tenant/v1_kubernetes_apis" ]; then
+if [ -d "${REPO_ROOT}/pkg/apis/tenant/v1" ]; then
   echo "Performing code generation for Tenant CRD"
   cd "${REPO_ROOT}"
 
   echo "Generating register for Tenant"
   "${REGISTER_GEN}" \
-    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis \
+    --input-dirs github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1 \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
     --output-file-base zz_generated.register
 
   "${CODEGEN_PKG}"/generate-groups.sh \
     "deepcopy,client,informer,lister" \
     github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/tenant/client github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis \
-    "tenant:v1_kubernetes_apis" \
+    "tenant:v1" \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt
 
-  echo "Generating openapi for Tenant v1_kubernetes_apis"
+  echo "Generating openapi for Tenant v1"
   "${OPENAPI_PKG}"/openapi-gen \
     --output-file zz_generated.openapi.go \
-    --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis \
-    --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis" \
+    --output-pkg github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1 \
+    --output-dir "${GOPATH}/src/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1" \
     --go-header-file "${SCRIPT_ROOT}"/boilerplate.go.txt \
-    github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1_kubernetes_apis
+    github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/tenant/v1
 else
-  echo "Directory pkg/apis/tenant/v1_kubernetes_apis not found. Skipping Tenant codegen."
+  echo "Directory pkg/apis/tenant/v1 not found. Skipping Tenant codegen."
 fi
