@@ -64,9 +64,26 @@ func NewAnalyzer() *analysis.Analyzer {
 
 		inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+		ignoredByFile := make(map[*token.File]map[int]bool, len(pass.Files))
+		for _, file := range pass.Files {
+			if isTestFile(pass.Fset, file.Pos()) {
+				continue
+			}
+			if tf := pass.Fset.File(file.Pos()); tf != nil {
+				ignoredByFile[tf] = collectIgnoredLines(pass.Fset, file)
+			}
+		}
+
 		// 0. Check for forbidden imports (promauto)
 		for _, file := range pass.Files {
+			if isTestFile(pass.Fset, file.Pos()) {
+				continue
+			}
+			ignoredLines := ignoredByFile[pass.Fset.File(file.Pos())]
 			for _, imp := range file.Imports {
+				if hasIgnoreComment(imp.Doc) || hasIgnoreComment(imp.Comment) || isLineIgnored(pass.Fset, ignoredLines, imp.Pos(), imp.End()) {
+					continue
+				}
 				path, err := strconv.Unquote(imp.Path.Value)
 				if err != nil {
 					continue
@@ -84,9 +101,16 @@ func NewAnalyzer() *analysis.Analyzer {
 
 		// 1. Check for package-level variables
 		for _, file := range pass.Files {
+			if isTestFile(pass.Fset, file.Pos()) {
+				continue
+			}
+			ignoredLines := ignoredByFile[pass.Fset.File(file.Pos())]
 			for _, decl := range file.Decls {
 				genDecl, ok := decl.(*ast.GenDecl)
 				if !ok || genDecl.Tok != token.VAR {
+					continue
+				}
+				if hasIgnoreComment(genDecl.Doc) {
 					continue
 				}
 
@@ -95,8 +119,14 @@ func NewAnalyzer() *analysis.Analyzer {
 					if !ok {
 						continue
 					}
+					if hasIgnoreComment(valueSpec.Doc) || hasIgnoreComment(valueSpec.Comment) {
+						continue
+					}
 
 					for _, name := range valueSpec.Names {
+						if isLineIgnored(pass.Fset, ignoredLines, name.Pos(), valueSpec.End()) {
+							continue
+						}
 						obj := pass.TypesInfo.Defs[name]
 						if obj == nil {
 							continue
@@ -118,7 +148,14 @@ func NewAnalyzer() *analysis.Analyzer {
 			(*ast.CallExpr)(nil),
 		}
 		inspect.Preorder(nodeTypes, func(n ast.Node) {
+			if isTestFile(pass.Fset, n.Pos()) {
+				return
+			}
 			call := n.(*ast.CallExpr)
+			ignoredLines := ignoredByFile[pass.Fset.File(call.Pos())]
+			if isLineIgnored(pass.Fset, ignoredLines, call.Pos(), call.End()) {
+				return
+			}
 			fun, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
 				return
@@ -176,7 +213,64 @@ var prometheusImports = []string{
 var promautoImports = []string{
 	"github.com/prometheus/client_golang/prometheus/promauto",
 	"third_party/golang/prometheus/client/prometheus/promauto",
+	"third_party/golang/prometheus/client/prometheus/promauto/promauto",
 	"google3/third_party/golang/prometheus/client/prometheus/promauto",
+	"google3/third_party/golang/prometheus/client/prometheus/promauto/promauto",
+}
+
+const ignoreDirective = "mtlint:ignore"
+
+func isTestFile(fset *token.FileSet, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	f := fset.File(pos)
+	return f != nil && strings.HasSuffix(f.Name(), "_test.go")
+}
+
+func collectIgnoredLines(fset *token.FileSet, file *ast.File) map[int]bool {
+	ignored := make(map[int]bool)
+	if fset == nil || file == nil {
+		return ignored
+	}
+	for _, cg := range file.Comments {
+		for _, c := range cg.List {
+			if strings.Contains(c.Text, ignoreDirective) {
+				startLine := fset.Position(c.Pos()).Line
+				endLine := fset.Position(c.End()).Line
+				for line := startLine; line <= endLine; line++ {
+					ignored[line] = true
+				}
+			}
+		}
+	}
+	return ignored
+}
+
+func hasIgnoreComment(cg *ast.CommentGroup) bool {
+	if cg == nil {
+		return false
+	}
+	for _, c := range cg.List {
+		if strings.Contains(c.Text, ignoreDirective) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLineIgnored(fset *token.FileSet, ignoredLines map[int]bool, start, end token.Pos) bool {
+	if fset == nil || len(ignoredLines) == 0 {
+		return false
+	}
+	startLine := fset.Position(start).Line
+	endLine := fset.Position(end).Line
+	for line := startLine; line <= endLine; line++ {
+		if ignoredLines[line] {
+			return true
+		}
+	}
+	return false
 }
 
 // Import paths that trigger MT checks (opt-in)
