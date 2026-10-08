@@ -5,7 +5,8 @@ import (
 	// Blank import to trigger opt-in.
 	_ "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/mtmetrics"
 	"github.com/prometheus/client_golang/prometheus"
-	_ "github.com/prometheus/client_golang/prometheus/promauto" // want "import of promauto is forbidden in MT mode; it registers metrics globally"
+	_ "github.com/prometheus/client_golang/prometheus/promauto"              // want "import of promauto is forbidden in MT mode; it registers metrics globally"
+	_ "third_party/golang/prometheus/client/prometheus/promauto/promauto" // want "import of promauto is forbidden in MT mode; it registers metrics globally"
 )
 
 type myStruct struct {
@@ -20,6 +21,14 @@ var (
 	globalSlice         []prometheus.Counter          // want "package-level global metric variable is forbidden in MT mode: globalSlice"
 	globalMap           map[string]prometheus.Counter // want "package-level global metric variable is forbidden in MT mode: globalMap"
 	globalStruct        myStruct                      // want "package-level global metric variable is forbidden in MT mode: globalStruct"
+	ignoredCounter      prometheus.Counter            // mtlint:ignore intentional process-level metric
+	// mtlint:ignore intentional process-level metric with doc comment
+	ignoredDocCounter prometheus.Counter
+)
+
+// mtlint:ignore intentional process-level metric block
+var (
+	ignoredBlockCounter prometheus.Counter
 )
 
 func init() {
@@ -27,4 +36,6 @@ func init() {
 	prometheus.Register(globalCounter)                       // want "direct call to prometheus.Register is forbidden; use mtmetrics factory instead"
 	prometheus.DefaultRegisterer.Register(globalCounter)     // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
 	prometheus.DefaultRegisterer.MustRegister(globalCounter) // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
+	prometheus.MustRegister(ignoredCounter)                  // mtlint:ignore intentional process-level registration
+	prometheus.DefaultRegisterer.MustRegister(ignoredCounter) // mtlint:ignore intentional process-level registration
 }
