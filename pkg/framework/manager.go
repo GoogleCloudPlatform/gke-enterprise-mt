@@ -125,6 +125,7 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 	hadFinalizer := slices.Contains(finalizers, m.finalizerName)
 
 	if !hadFinalizer {
+		pc = pc.DeepCopy()
 		pc.SetFinalizers(append(finalizers, m.finalizerName))
 		_, err := m.client.Resource(providerConfigGVR).Update(ctx, pc, metav1.UpdateOptions{})
 		if err != nil {

@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
 )
@@ -646,5 +647,84 @@ func TestManagerForceCleanupFallback(t *testing.T) {
 
 	if exists {
 		t.Error("Expected tenant to not be in deleting map")
+	}
+}
+
+type failNextUpdateClient struct {
+	dynamic.Interface
+	failNextUpdate bool
+	updateCalls    int
+}
+
+type failNextUpdateResource struct {
+	dynamic.NamespaceableResourceInterface
+	client *failNextUpdateClient
+}
+
+func (c *failNextUpdateClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &failNextUpdateResource{
+		NamespaceableResourceInterface: c.Interface.Resource(resource),
+		client:                         c,
+	}
+}
+
+func (r *failNextUpdateResource) Update(ctx context.Context, obj *unstructured.Unstructured, options metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	r.client.updateCalls++
+	if r.client.failNextUpdate {
+		r.client.failNextUpdate = false
+		return nil, fmt.Errorf("simulated transient update conflict")
+	}
+	return r.NamespaceableResourceInterface.Update(ctx, obj, options, subresources...)
+}
+
+func TestManagerStartUpdateFailureDoesNotMutateCachedProviderConfig(t *testing.T) {
+	ctx := t.Context()
+	baseClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	client := &failNextUpdateClient{
+		Interface:      baseClient,
+		failNextUpdate: true,
+	}
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(client, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := createProviderConfigInClient(ctx, baseClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	// First call: Update fails with a transient error.
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err == nil { // if NO error
+		t.Fatalf("StartControllersForProviderConfig(%q) = nil, want error when Update fails", pc.GetName())
+	}
+	if got := hasFinalizer(pc, finalizerName); got {
+		t.Errorf("hasFinalizer(cachedPC, %q) = %v, want false after failed Update", finalizerName, got)
+	}
+	if got := mockStarter.getStartCallCount(); got != 0 {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want 0 after failed Update", got)
+	}
+
+	// Second call (workqueue retry) with the exact same cached pc pointer:
+	// Update must be attempted again and persist the finalizer in the client.
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StartControllersForProviderConfig(%q) retry failed: %v", pc.GetName(), err)
+	}
+	if got := hasFinalizer(pc, finalizerName); got {
+		t.Errorf("hasFinalizer(cachedPC, %q) = %v, want false (cached object must not be mutated in-place)", finalizerName, got)
+	}
+	if client.updateCalls != 2 {
+		t.Errorf("client.updateCalls = %d, want 2", client.updateCalls)
+	}
+	if got := mockStarter.getStartCallCount(); got != 1 {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want 1", got)
+	}
+
+	storedPC, err := providerConfigFromClient(ctx, baseClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	if got := hasFinalizer(storedPC, finalizerName); !got {
+		t.Errorf("hasFinalizer(storedPC, %q) = %v, want true", finalizerName, got)
 	}
 }
