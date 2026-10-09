@@ -176,7 +176,9 @@ var prometheusImports = []string{
 var promautoImports = []string{
 	"github.com/prometheus/client_golang/prometheus/promauto",
 	"third_party/golang/prometheus/client/prometheus/promauto",
+	"third_party/golang/prometheus/client/prometheus/promauto/promauto",
 	"google3/third_party/golang/prometheus/client/prometheus/promauto",
+	"google3/third_party/golang/prometheus/client/prometheus/promauto/promauto",
 }
 
 // Import paths that trigger MT checks (opt-in)
