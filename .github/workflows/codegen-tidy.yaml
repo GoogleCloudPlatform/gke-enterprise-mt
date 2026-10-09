@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'pkg/apis/**'
+      - 'pkg/**'
+      - 'cmd/**'
       - 'go.mod'
       - 'go.sum'
       - 'hack/update-codegen.sh'
