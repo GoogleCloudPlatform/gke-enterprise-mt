@@ -66,6 +66,9 @@ func NewAnalyzer() *analysis.Analyzer {
 
 		// 0. Check for forbidden imports (promauto)
 		for _, file := range pass.Files {
+			if isTestFile(pass.Fset, file.Pos()) {
+				continue
+			}
 			for _, imp := range file.Imports {
 				path, err := strconv.Unquote(imp.Path.Value)
 				if err != nil {
@@ -84,6 +87,9 @@ func NewAnalyzer() *analysis.Analyzer {
 
 		// 1. Check for package-level variables
 		for _, file := range pass.Files {
+			if isTestFile(pass.Fset, file.Pos()) {
+				continue
+			}
 			for _, decl := range file.Decls {
 				genDecl, ok := decl.(*ast.GenDecl)
 				if !ok || genDecl.Tok != token.VAR {
@@ -118,6 +124,9 @@ func NewAnalyzer() *analysis.Analyzer {
 			(*ast.CallExpr)(nil),
 		}
 		inspect.Preorder(nodeTypes, func(n ast.Node) {
+			if isTestFile(pass.Fset, n.Pos()) {
+				return
+			}
 			call := n.(*ast.CallExpr)
 			fun, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
@@ -176,7 +185,17 @@ var prometheusImports = []string{
 var promautoImports = []string{
 	"github.com/prometheus/client_golang/prometheus/promauto",
 	"third_party/golang/prometheus/client/prometheus/promauto",
+	"third_party/golang/prometheus/client/prometheus/promauto/promauto",
 	"google3/third_party/golang/prometheus/client/prometheus/promauto",
+	"google3/third_party/golang/prometheus/client/prometheus/promauto/promauto",
+}
+
+func isTestFile(fset *token.FileSet, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	f := fset.File(pos)
+	return f != nil && strings.HasSuffix(f.Name(), "_test.go")
 }
 
 // Import paths that trigger MT checks (opt-in)
