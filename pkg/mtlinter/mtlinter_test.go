@@ -52,4 +52,26 @@ func TestLinter(t *testing.T) {
 		// wildcard_excluded/pkg2: imports mtmetrics -> excluded via wildcard, passes.
 		analysistest.Run(t, testdata, analyzer, "wildcard_checked/pkg1", "wildcard_excluded/pkg2")
 	})
+
+	// 5. Google3 promauto/promauto import path.
+	t.Run("google3_promauto_import", func(t *testing.T) {
+		files := map[string]string{
+			"third_party/golang/prometheus/client/prometheus/promauto/promauto/promauto.go": "package promauto\n",
+			"pkg/pkg.go": `package pkg
+
+import _ "third_party/golang/prometheus/client/prometheus/promauto/promauto" // want "import of promauto is forbidden in MT mode; it registers metrics globally"
+`,
+		}
+		dir, cleanup, err := analysistest.WriteFiles(files)
+		if err != nil {
+			t.Fatalf("WriteFiles failed: %v", err)
+		}
+		defer cleanup()
+
+		analyzer := mtlinter.NewAnalyzer()
+		if err := analyzer.Flags.Set("check-packages", "pkg"); err != nil {
+			t.Fatalf("failed to set check-packages: %v", err)
+		}
+		analysistest.Run(t, dir, analyzer, "pkg")
+	})
 }
