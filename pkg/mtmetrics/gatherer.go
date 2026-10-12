@@ -73,6 +73,14 @@ func (m *MultiGatherer) Unregister(tenantUID string) {
 	delete(m.gatherers, tenantUID)
 }
 
+// Get returns the gatherer registered for the given tenantUID, if any.
+func (m *MultiGatherer) Get(tenantUID string) (prometheus.Gatherer, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	g, ok := m.gatherers[tenantUID]
+	return g, ok
+}
+
 // Gather implements prometheus.Gatherer. It gathers metrics from all registered
 // tenant gatherers and merges them.
 // It uses a Copy-on-Read pattern to minimize lock hold duration and sorts
