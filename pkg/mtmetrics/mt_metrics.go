@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -29,6 +30,48 @@ import (
 
 // DefaultGlobalTracker is the default global tracker.
 var DefaultGlobalTracker = NewGlobalMetricsTracker()
+
+var (
+	tenantFactoriesMu sync.Mutex
+	tenantFactories   = make(map[string]*MTMetricFactory)
+)
+
+// GetOrCreateFactory returns the shared MTMetricFactory for the given tenantUID,
+// creating and registering it with DefaultMultiGatherer if it does not already exist.
+// This enforces the 1:1:1 invariant (1 tenant : 1 MTMetricFactory : 1 local prometheus.Registry
+// in DefaultMultiGatherer) across the ProviderConfig lifecycle framework and tenant controllers.
+func GetOrCreateFactory(tenantUID string) *MTMetricFactory {
+	tenantFactoriesMu.Lock()
+	defer tenantFactoriesMu.Unlock()
+
+	if f, exists := tenantFactories[tenantUID]; exists {
+		return f
+	}
+	f := NewMTMetricFactory(tenantUID, prometheus.DefaultRegisterer, DefaultGlobalTracker)
+	if err := DefaultMultiGatherer.Register(tenantUID, f.localRegistry); err != nil {
+		klog.Warningf("failed to register gatherer for tenant %q: %v", tenantUID, err)
+	}
+	tenantFactories[tenantUID] = f
+	return f
+}
+
+// CleanupTenant removes the shared MTMetricFactory for the given tenantUID,
+// unregisters the tenant's gatherer from DefaultMultiGatherer, and resets all
+// of the tenant's gauge values in DefaultGlobalTracker.
+func CleanupTenant(tenantUID string) {
+	if tenantUID == "" {
+		return
+	}
+	tenantFactoriesMu.Lock()
+	defer tenantFactoriesMu.Unlock()
+
+	if f, exists := tenantFactories[tenantUID]; exists && f != nil {
+		f.closed.Store(true)
+	}
+	DefaultMultiGatherer.Unregister(tenantUID)
+	DefaultGlobalTracker.ResetTenant(tenantUID)
+	delete(tenantFactories, tenantUID)
+}
 
 // AggregationStrategy defines how tenant metric values are aggregated (Sum, Max, Min).
 type AggregationStrategy int
@@ -292,9 +335,17 @@ func (t *GlobalMetricsTracker) addGaugeValueLocked(name string, lvsKey string, t
 	t.gaugeValues[key] += delta
 }
 
-func (t *GlobalMetricsTracker) updateGauge(local prometheus.Gauge, name string, lvsKey string, tenantUID string, val float64, op gaugeOp) {
+func isFactoryClosed(closed *atomic.Bool) bool {
+	return closed != nil && closed.Load()
+}
+
+func (t *GlobalMetricsTracker) updateGauge(local prometheus.Gauge, name string, lvsKey string, tenantUID string, val float64, op gaugeOp, closed *atomic.Bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	if isFactoryClosed(closed) {
+		return
+	}
 
 	switch op {
 	case opSet:
@@ -534,11 +585,13 @@ type MTMetricFactory struct {
 	globalReg     prometheus.Registerer
 	localRegistry *prometheus.Registry
 	tracker       *GlobalMetricsTracker
+	closed        atomic.Bool
 }
 
 // NewMTMetricFactory creates a new MTMetricFactory for a specific tenant.
-// It requires the tenant's UID, the global registry to register global metrics,
-// and the GlobalMetricsTracker for aggregating gauge values.
+// Production callers should use GetOrCreateFactory(tenantUID) to share a single
+// factory and registry per tenant. NewMTMetricFactory is intended for unit tests
+// that supply a custom prometheus.Registerer or GlobalMetricsTracker.
 func NewMTMetricFactory(tenantUID string, globalReg prometheus.Registerer, tracker *GlobalMetricsTracker) *MTMetricFactory {
 	if tracker != nil {
 		if err := tracker.RegisterTo(globalReg); err != nil {
@@ -560,10 +613,24 @@ func (f *MTMetricFactory) Registry() *prometheus.Registry {
 	return f.localRegistry
 }
 
-// Cleanup cleans up the tenant's metrics in the GlobalMetricsTracker.
-// It should be called when the tenant is being decommissioned or the factory is discarded.
+// Cleanup marks the factory as closed and cleans up the tenant's metrics.
+// If this factory is the active shared instance in tenantFactories, it unregisters
+// the tenant from DefaultMultiGatherer, resets the tracker, and removes the cached
+// entry. If a newer factory has already replaced this instance for the same tenant,
+// Cleanup leaves the newer factory's state intact.
 func (f *MTMetricFactory) Cleanup() {
-	if f.tracker != nil {
+	f.closed.Store(true)
+	tenantFactoriesMu.Lock()
+	current, exists := tenantFactories[f.tenantUID]
+	if exists && current == f {
+		DefaultMultiGatherer.Unregister(f.tenantUID)
+		if f.tracker != nil {
+			f.tracker.ResetTenant(f.tenantUID)
+		}
+		delete(tenantFactories, f.tenantUID)
+	}
+	tenantFactoriesMu.Unlock()
+	if !exists && f.tracker != nil {
 		f.tracker.ResetTenant(f.tenantUID)
 	}
 }
@@ -605,13 +672,22 @@ type mtGauge struct {
 	metricName string
 	lvsKey     string
 	tenantUID  string
+	closed     *atomic.Bool
+}
+
+// isClosed reports whether the parent tenant factory has been cleaned up.
+func (g mtGauge) isClosed() bool {
+	return isFactoryClosed(g.closed)
 }
 
 // Set sets the gauge value for the tenant locally and updates the aggregated
 // value in the tracker.
 func (g mtGauge) Set(v float64) {
+	if g.isClosed() {
+		return
+	}
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opSet)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opSet, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Set(v)
 	}
@@ -619,8 +695,11 @@ func (g mtGauge) Set(v float64) {
 
 // Inc increments the gauge value by 1 locally and updates the tracker.
 func (g mtGauge) Inc() {
+	if g.isClosed() {
+		return
+	}
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, 0, opInc)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, 0, opInc, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Inc()
 	}
@@ -628,8 +707,11 @@ func (g mtGauge) Inc() {
 
 // Dec decrements the gauge value by 1 locally and updates the tracker.
 func (g mtGauge) Dec() {
+	if g.isClosed() {
+		return
+	}
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, 0, opDec)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, 0, opDec, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Dec()
 	}
@@ -637,8 +719,11 @@ func (g mtGauge) Dec() {
 
 // Add adds the given value to the gauge locally and updates the tracker.
 func (g mtGauge) Add(v float64) {
+	if g.isClosed() {
+		return
+	}
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opAdd)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opAdd, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Add(v)
 	}
@@ -646,8 +731,11 @@ func (g mtGauge) Add(v float64) {
 
 // Sub subtracts the given value from the gauge locally and updates the tracker.
 func (g mtGauge) Sub(v float64) {
+	if g.isClosed() {
+		return
+	}
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opSub)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, v, opSub, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Sub(v)
 	}
@@ -656,9 +744,12 @@ func (g mtGauge) Sub(v float64) {
 // SetToCurrentTime sets the gauge to the current Unix time in seconds,
 // locally and in the tracker.
 func (g mtGauge) SetToCurrentTime() {
+	if g.isClosed() {
+		return
+	}
 	val := float64(time.Now().UnixNano()) / 1e9
 	if g.tracker != nil {
-		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, val, opSet)
+		g.tracker.updateGauge(g.Gauge, g.metricName, g.lvsKey, g.tenantUID, val, opSet, g.closed)
 	} else if g.Gauge != nil {
 		g.Gauge.Set(val)
 	}
@@ -740,6 +831,7 @@ type mtGaugeVec struct {
 	metricName string
 	local      *prometheus.GaugeVec
 	tracker    *GlobalMetricsTracker
+	closed     *atomic.Bool
 }
 
 // WithLabelValues returns a Gauge wrapper for the given label values.
@@ -757,6 +849,7 @@ func (v *mtGaugeVec) WithLabelValues(lvs ...string) prometheus.Gauge {
 		metricName: v.metricName,
 		lvsKey:     serializeLabels(lvs),
 		tenantUID:  v.tenantUID,
+		closed:     v.closed,
 	}
 }
 
@@ -880,6 +973,7 @@ func (f *MTMetricFactory) NewGaugeVec(opts prometheus.GaugeOpts, labelNames []st
 		metricName: prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
 		local:      localVec,
 		tracker:    f.tracker,
+		closed:     &f.closed,
 	}, nil
 }
 
@@ -975,6 +1069,7 @@ func (f *MTMetricFactory) NewGauge(opts prometheus.GaugeOpts) (prometheus.Gauge,
 		metricName: metricName,
 		lvsKey:     serializeLabels(nil),
 		tenantUID:  f.tenantUID,
+		closed:     &f.closed,
 	}, nil
 }
 

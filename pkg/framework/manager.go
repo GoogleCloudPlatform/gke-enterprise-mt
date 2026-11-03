@@ -32,23 +32,43 @@ type manager struct {
 
 	client            dynamic.Interface
 	finalizerName     string
+	controllerName    string
 	controllerStarter ControllerStarter
 
 	deletingMu sync.Mutex
 	deleting   map[string]*deletingTenantState
+	tenantUIDs map[string]string
 }
 
 // newManager constructs a new generic ProviderConfig controller manager.
 // It does not start any controllers until StartControllersForProviderConfig is invoked.
 func newManager(client dynamic.Interface, finalizerName string, controllerStarter ControllerStarter,
 ) *manager {
+	return newManagerWithControllerName(client, finalizerName, "", controllerStarter)
+}
+
+// newManagerWithControllerName constructs a new generic ProviderConfig controller manager
+// with an explicit controllerName for lifecycle metrics.
+func newManagerWithControllerName(client dynamic.Interface, finalizerName string, controllerName string, controllerStarter ControllerStarter,
+) *manager {
 	return &manager{
 		controllers:       NewControllerMap(),
 		client:            client,
 		finalizerName:     finalizerName,
+		controllerName:    controllerName,
 		controllerStarter: controllerStarter,
 		deleting:          make(map[string]*deletingTenantState),
+		tenantUIDs:        make(map[string]string),
 	}
+}
+
+func extractTenantUID(pc *unstructured.Unstructured) string {
+	tenantUID, found, err := unstructured.NestedString(pc.Object, "spec", "principalInfo", "id")
+	if err != nil || !found || tenantUID == "" {
+		klog.Warningf("Could not find tenant UID in spec.principalInfo.id for ProviderConfig %s: %v. Falling back to name.", pc.GetName(), err)
+		return pc.GetName()
+	}
+	return tenantUID
 }
 
 var providerConfigGVR = schema.GroupVersionResource{
@@ -105,8 +125,10 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 	}
 
 	pcKey := providerConfigKey(pc)
+	tenantUID := extractTenantUID(pc)
 
 	m.deletingMu.Lock()
+	m.tenantUIDs[pcKey] = tenantUID
 	if state, exists := m.deleting[pcKey]; exists {
 		state.cancel()
 		delete(m.deleting, pcKey)
@@ -132,6 +154,7 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 			if !existed {
 				m.controllers.Delete(pcKey)
 			}
+			m.setControllerRunningMetric(tenantUID, 0)
 			return fmt.Errorf("failed to ensure finalizer %s for provider config %s: %w", m.finalizerName, pcKey, err)
 		}
 	}
@@ -147,10 +170,12 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 		if !hadFinalizer {
 			m.rollbackFinalizerOnStartFailure(ctx, pc, err)
 		}
+		m.setControllerRunningMetric(tenantUID, 0)
 		return fmt.Errorf("failed to start controller for provider config %s: %w", pcKey, err)
 	}
 
 	cs.stopCh = controllerStopCh
+	m.setControllerRunningMetric(tenantUID, 1)
 
 	klog.Info("Started controllers for provider config")
 	return nil
@@ -165,14 +190,10 @@ func (m *manager) StopControllersForProviderConfig(ctx context.Context, pc *unst
 		return fmt.Errorf("expected object of kind %s, but got %s", providerConfigGVK, pc.GroupVersionKind())
 	}
 	pcKey := providerConfigKey(pc)
-
-	tenantUID, found, err := unstructured.NestedString(pc.Object, "spec", "principalInfo", "id")
-	if err != nil || !found || tenantUID == "" {
-		klog.Warningf("Could not find tenant UID in spec.principalInfo.id for ProviderConfig %s: %v. Falling back to name.", pc.GetName(), err)
-		tenantUID = pc.GetName()
-	}
+	tenantUID := extractTenantUID(pc)
 
 	m.deletingMu.Lock()
+	m.tenantUIDs[pcKey] = tenantUID
 	if _, exists := m.deleting[pcKey]; !exists {
 		timerCtx, cancel := context.WithCancel(context.Background())
 		m.deleting[pcKey] = &deletingTenantState{
@@ -234,14 +255,16 @@ func (m *manager) ForceCleanupTenant(pcKey string) {
 		state.cancel()
 		tenantUID = state.tenantUID
 		delete(m.deleting, pcKey)
+	} else if uid, exists := m.tenantUIDs[pcKey]; exists {
+		tenantUID = uid
 	} else {
 		// Fallback to pcKey as tenantUID if not in the deleting map.
 		tenantUID = pcKey
 	}
+	delete(m.tenantUIDs, pcKey)
 	m.deletingMu.Unlock()
 
 	if tenantUID != "" {
-		mtmetrics.DefaultMultiGatherer.Unregister(tenantUID)
-		mtmetrics.DefaultGlobalTracker.ResetTenant(tenantUID)
+		mtmetrics.CleanupTenant(tenantUID)
 	}
 }
