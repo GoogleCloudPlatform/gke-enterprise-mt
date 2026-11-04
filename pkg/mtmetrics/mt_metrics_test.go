@@ -1428,3 +1428,60 @@ func TestGlobalMetricsTracker_FlatMapDesign(t *testing.T) {
 	}
 	tracker.mu.Unlock()
 }
+
+func TestGetOrCreateFactoryAndCleanupTenant(t *testing.T) {
+	const tenantUID = "test-1to1to1-tenant"
+	defer CleanupTenant(tenantUID)
+
+	f1 := GetOrCreateFactory(tenantUID)
+	f2 := GetOrCreateFactory(tenantUID)
+	if f1 != f2 {
+		t.Fatalf("Expected GetOrCreateFactory to return identical factory instance, got %p vs %p", f1, f2)
+	}
+	if f1.Registry() != f2.Registry() {
+		t.Fatalf("Expected GetOrCreateFactory to return identical Registry instance")
+	}
+
+	g, err := f1.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_1to1to1_gauge",
+		Help: "test help",
+	}, []string{"controller"})
+	if err != nil {
+		t.Fatalf("Failed to create gauge vec: %v", err)
+	}
+	g.WithLabelValues("neg").Set(1)
+
+	mg, ok := DefaultMultiGatherer.(*MultiGatherer)
+	if !ok {
+		t.Fatalf("Expected DefaultMultiGatherer to be *MultiGatherer")
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("MultiGatherer.Gather() failed: %v", err)
+	}
+	var found bool
+	for _, mf := range mfs {
+		if mf.GetName() == "test_1to1to1_gauge" {
+			for _, m := range mf.Metric {
+				labelsMap := make(map[string]string)
+				for _, l := range m.Label {
+					labelsMap[l.GetName()] = l.GetValue()
+				}
+				if labelsMap["tenant_uid"] == tenantUID && labelsMap["controller"] == "neg" {
+					found = true
+					if m.Gauge.GetValue() != 1 {
+						t.Errorf("Expected gauge value 1, got %f", m.Gauge.GetValue())
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Expected test_1to1to1_gauge for tenant %q in DefaultMultiGatherer", tenantUID)
+	}
+
+	CleanupTenant(tenantUID)
+	if _, exists := mg.Get(tenantUID); exists {
+		t.Errorf("Expected tenant %q to be unregistered from DefaultMultiGatherer after CleanupTenant", tenantUID)
+	}
+}

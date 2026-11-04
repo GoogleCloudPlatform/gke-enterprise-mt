@@ -30,6 +30,73 @@ import (
 // DefaultGlobalTracker is the default global tracker.
 var DefaultGlobalTracker = NewGlobalMetricsTracker()
 
+var (
+	tenantFactoriesMu sync.Mutex
+	tenantFactories   = make(map[string]*MTMetricFactory)
+)
+
+// GetOrCreateFactory returns the shared MTMetricFactory for the given tenantUID,
+// creating and registering it with DefaultMultiGatherer if it does not already exist.
+// This enforces the 1:1:1 invariant (1 tenant : 1 MTMetricFactory : 1 local prometheus.Registry
+// in DefaultMultiGatherer) across the ProviderConfig lifecycle framework and tenant controllers.
+func GetOrCreateFactory(tenantUID string) *MTMetricFactory {
+	tenantFactoriesMu.Lock()
+	defer tenantFactoriesMu.Unlock()
+
+	if mg, ok := DefaultMultiGatherer.(*MultiGatherer); ok {
+		existingGatherer, hasGatherer := mg.Get(tenantUID)
+		if f, exists := tenantFactories[tenantUID]; exists && hasGatherer {
+			if reg, isReg := existingGatherer.(*prometheus.Registry); isReg && reg != nil {
+				f.localRegistry = reg
+			}
+			return f
+		}
+		f := NewMTMetricFactory(tenantUID, prometheus.DefaultRegisterer, DefaultGlobalTracker)
+		if hasGatherer {
+			if reg, isReg := existingGatherer.(*prometheus.Registry); isReg && reg != nil {
+				f.localRegistry = reg
+			}
+		} else {
+			if err := DefaultMultiGatherer.Register(tenantUID, f.localRegistry); err != nil {
+				klog.Warningf("failed to register gatherer for tenant %q: %v", tenantUID, err)
+			}
+		}
+		tenantFactories[tenantUID] = f
+		return f
+	}
+
+	if f, exists := tenantFactories[tenantUID]; exists {
+		_ = DefaultMultiGatherer.Register(tenantUID, f.localRegistry)
+		return f
+	}
+	f := NewMTMetricFactory(tenantUID, prometheus.DefaultRegisterer, DefaultGlobalTracker)
+	if err := DefaultMultiGatherer.Register(tenantUID, f.localRegistry); err != nil {
+		klog.Warningf("failed to register gatherer for tenant %q: %v", tenantUID, err)
+	}
+	tenantFactories[tenantUID] = f
+	return f
+}
+
+// CleanupTenant removes the shared MTMetricFactory for the given tenantUID,
+// unregisters the tenant's gatherer from DefaultMultiGatherer, and resets all
+// of the tenant's gauge values in DefaultGlobalTracker.
+func CleanupTenant(tenantUID string) {
+	if tenantUID == "" {
+		return
+	}
+	tenantFactoriesMu.Lock()
+	f, exists := tenantFactories[tenantUID]
+	delete(tenantFactories, tenantUID)
+	tenantFactoriesMu.Unlock()
+
+	DefaultMultiGatherer.Unregister(tenantUID)
+	if exists && f != nil {
+		f.Cleanup()
+	} else {
+		DefaultGlobalTracker.ResetTenant(tenantUID)
+	}
+}
+
 // AggregationStrategy defines how tenant metric values are aggregated (Sum, Max, Min).
 type AggregationStrategy int
 
