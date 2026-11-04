@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/analysis/analysistest"
@@ -84,5 +85,168 @@ var (
 	diags := mtlinter.CheckDir(rec, tmpDir)
 	if len(diags) != 1 {
 		t.Fatalf("CheckDir(%q) = %d diagnostics (%v), want 1 for inferredCounter", tmpDir, len(diags), diags)
+	}
+}
+
+func TestCheckDirSuppressionValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		src            string
+		wantSubstrings []string
+	}{
+		{
+			name: "valid_per_spec_and_call_doc_suppressions",
+			src: `package controller
+
+import (
+	"sync"
+
+	"google3/third_party/golang/prometheus/client/prometheus/prometheus"
+	_ "google3/third_party/tenancy/components/mtmetrics/mtmetrics"
+)
+
+var (
+	// Preliminary comment before suppression directive.
+	// mtlint:ignore Process-level metric not scoped to a single tenant.
+	exitCounter = prometheus.NewCounter(
+		prometheus.CounterOpts{Name: "exit_total"},
+	)
+	latency = prometheus.NewHistogramVec( // mtlint:ignore Process-level latency metric.
+		prometheus.HistogramOpts{Name: "latency_ms"},
+		[]string{"method"},
+	)
+)
+
+// mtlint:ignore Single unparenthesized var metric.
+var buildInfo = prometheus.NewGauge(prometheus.GaugeOpts{Name: "build_info"})
+
+var registerOnce sync.Once
+
+func RegisterMetrics() {
+	registerOnce.Do(func() {
+		prometheus.MustRegister(exitCounter) // mtlint:ignore Process-level metric.
+		// mtlint:ignore Process-level registration with doc comment.
+		prometheus.MustRegister(latency, buildInfo)
+	})
+}
+`,
+			wantSubstrings: nil,
+		},
+		{
+			name: "bare_and_whitespace_only_ignore_directives",
+			src: `package controller
+
+import (
+	"google3/third_party/golang/prometheus/client/prometheus/prometheus"
+	_ "google3/third_party/tenancy/components/mtmetrics/mtmetrics"
+)
+
+// mtlint:ignore
+var bareCounter = prometheus.NewCounter(prometheus.CounterOpts{Name: "bare_counter"})
+
+func init() {
+	prometheus.MustRegister(bareCounter) // mtlint:ignore   	
+}
+`,
+			wantSubstrings: []string{
+				"metrics.go:8:1: mtlint:ignore requires a reason",
+				"metrics.go:12:39: mtlint:ignore requires a reason",
+				"metrics.go:9:5: package-level global metric variable is forbidden in MT mode: bareCounter",
+				"metrics.go:12:2: direct call to prometheus.MustRegister is forbidden; use mtmetrics factory instead",
+			},
+		},
+		{
+			name: "var_block_suppression_rejected",
+			src: `package controller
+
+import (
+	"google3/third_party/golang/prometheus/client/prometheus/prometheus"
+	_ "google3/third_party/tenancy/components/mtmetrics/mtmetrics"
+)
+
+// mtlint:ignore Legacy block annotation.
+var (
+	unannotated = prometheus.NewCounter(prometheus.CounterOpts{Name: "unannotated"})
+	// mtlint:ignore Annotated per-spec metric.
+	annotated = prometheus.NewCounter(prometheus.CounterOpts{Name: "annotated"})
+)
+`,
+			wantSubstrings: []string{
+				"metrics.go:8:1: mtlint:ignore on a var block is not supported; annotate each variable individually",
+				"metrics.go:10:2: package-level global metric variable is forbidden in MT mode: unannotated",
+			},
+		},
+		{
+			name: "trailing_previous_line_and_inner_multiline_comments_do_not_suppress",
+			src: `package controller
+
+import (
+	"google3/third_party/golang/prometheus/client/prometheus/prometheus"
+	_ "google3/third_party/tenancy/components/mtmetrics/mtmetrics"
+)
+
+var (
+	multiLineVar = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "multi_line", // mtlint:ignore Inner line comment.
+		},
+	) // mtlint:ignore Closing paren comment.
+)
+
+func init() {
+	x := 1 // mtlint:ignore Trailing comment on line N-1.
+	prometheus.MustRegister(multiLineVar)
+	_ = x
+
+	prometheus.Register(
+		multiLineVar, // mtlint:ignore Inner call argument comment.
+	)
+}
+`,
+			wantSubstrings: []string{
+				"metrics.go:9:2: package-level global metric variable is forbidden in MT mode: multiLineVar",
+				"metrics.go:18:2: direct call to prometheus.MustRegister is forbidden; use mtmetrics factory instead",
+				"metrics.go:21:2: direct call to prometheus.Register is forbidden; use mtmetrics factory instead",
+			},
+		},
+		{
+			name: "block_and_mid_sentence_comments_ignored",
+			src: `package controller
+
+import (
+	"google3/third_party/golang/prometheus/client/prometheus/prometheus"
+	_ "google3/third_party/tenancy/components/mtmetrics/mtmetrics"
+)
+
+/* mtlint:ignore Block comment with reason. */
+var blockVar = prometheus.NewCounter(prometheus.CounterOpts{Name: "block_var"})
+
+// Avoid using mtlint:ignore on tenant metrics.
+var proseVar = prometheus.NewCounter(prometheus.CounterOpts{Name: "prose_var"})
+`,
+			wantSubstrings: []string{
+				"metrics.go:9:5: package-level global metric variable is forbidden in MT mode: blockVar",
+				"metrics.go:12:5: package-level global metric variable is forbidden in MT mode: proseVar",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpDir, "metrics.go"), []byte(tc.src), 0644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			rec := &recordingT{}
+			diags := mtlinter.CheckDir(rec, tmpDir)
+			if len(diags) != len(tc.wantSubstrings) {
+				t.Fatalf("CheckDir() returned %d diagnostics, want %d:\ngot:  %v\nwant: %v", len(diags), len(tc.wantSubstrings), diags, tc.wantSubstrings)
+			}
+			for i, wantSub := range tc.wantSubstrings {
+				if !strings.Contains(diags[i], wantSub) {
+					t.Errorf("diags[%d] = %q, want substring %q", i, diags[i], wantSub)
+				}
+			}
+		})
 	}
 }
