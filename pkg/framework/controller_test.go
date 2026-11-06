@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"google3/third_party/kubernetes_apis/k8s_io/apimachinery/pkg/sharding/sharding"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
@@ -168,6 +169,9 @@ func (f *fakeInformer) SetWatchErrorHandlerWithContext(handler cache.WatchErrorH
 }
 func (f *fakeInformer) GetController() cache.Controller                { return nil }
 func (f *fakeInformer) SetTransform(handler cache.TransformFunc) error { return nil }
+func (f *fakeInformer) SetShardSelector(selector sharding.Selector) error {
+	return nil
+}
 
 func newTestProviderConfigController(t *testing.T) *testProviderConfigController {
 	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
