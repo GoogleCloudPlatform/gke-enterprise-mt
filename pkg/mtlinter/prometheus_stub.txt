@@ -1,0 +1,88 @@
+package prometheus
+
+type Metric interface{}
+type Collector interface{}
+type Desc struct{}
+type Opts struct {
+	Namespace   string
+	Subsystem   string
+	Name        string
+	Help        string
+	ConstLabels Labels
+}
+type Labels map[string]string
+type CounterOpts Opts
+type GaugeOpts Opts
+type HistogramOpts struct {
+	Namespace   string
+	Subsystem   string
+	Name        string
+	Help        string
+	ConstLabels Labels
+	Buckets     []float64
+}
+type SummaryOpts struct {
+	Namespace   string
+	Subsystem   string
+	Name        string
+	Help        string
+	ConstLabels Labels
+	Objectives  map[float64]float64
+}
+type UntypedOpts Opts
+
+type Counter struct{}
+type CounterVec struct{}
+type CounterFunc struct{}
+type Gauge struct{}
+type GaugeVec struct{}
+type GaugeFunc struct{}
+type Histogram struct{}
+type HistogramVec struct{}
+type Observer interface{}
+type ObserverVec interface{}
+type Summary struct{}
+type SummaryVec struct{}
+type Untyped struct{}
+type UntypedVec struct{}
+type UntypedFunc struct{}
+type Timer struct{}
+type Registry struct{}
+
+type Registerer struct{}
+
+func (Registerer) Register(Collector) error       { return nil }
+func (Registerer) MustRegister(...Collector)      {}
+func (Registerer) MustRegisterOrDie(...Collector) {}
+func (Registerer) Unregister(Collector) bool      { return true }
+
+type Gatherer interface{}
+
+var DefaultRegisterer Registerer
+var DefaultGatherer Gatherer
+
+func Register(Collector) error       { return nil }
+func MustRegister(...Collector)      {}
+func MustRegisterOrDie(...Collector) {}
+
+func NewCounter(CounterOpts) Counter                                { return Counter{} }
+func NewCounterVec(CounterOpts, []string) *CounterVec               { return nil }
+func NewCounterFunc(CounterOpts, func() float64) CounterFunc        { return CounterFunc{} }
+func NewGauge(GaugeOpts) Gauge                                      { return Gauge{} }
+func NewGaugeVec(GaugeOpts, []string) *GaugeVec                     { return nil }
+func NewGaugeFunc(GaugeOpts, func() float64) GaugeFunc              { return GaugeFunc{} }
+func NewHistogram(HistogramOpts) Histogram                          { return Histogram{} }
+func NewHistogramVec(HistogramOpts, []string) *HistogramVec         { return nil }
+func NewSummary(SummaryOpts) Summary                                { return Summary{} }
+func NewSummaryVec(SummaryOpts, []string) *SummaryVec               { return nil }
+func NewUntypedFunc(UntypedOpts, func() float64) UntypedFunc        { return UntypedFunc{} }
+func NewRegistry() *Registry                                        { return nil }
+func NewPedanticRegistry() *Registry                                { return nil }
+func NewConstMetric(*Desc, int, float64, ...string) (Metric, error) { return nil, nil }
+func MustNewConstMetric(*Desc, int, float64, ...string) Metric      { return nil }
+func NewDesc(string, string, []string, Labels) *Desc                { return nil }
+func ExponentialBuckets(float64, float64, int) []float64            { return nil }
+func LinearBuckets(float64, float64, int) []float64                 { return nil }
+func DefBuckets() []float64                                         { return nil }
+func WrapRegistererWith(Labels, Registerer) Registerer              { return Registerer{} }
+func WrapRegistererWithPrefix(string, Registerer) Registerer        { return Registerer{} }
