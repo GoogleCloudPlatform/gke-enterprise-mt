@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
+	dto_pb "github.com/prometheus/client_model/go"
+	mtmetrics "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/mtmetrics"
 )
 
 func createProviderConfigInClient(ctx context.Context, client dynamic.Interface, pc *unstructured.Unstructured) error {
@@ -726,5 +728,155 @@ func TestManagerStartUpdateFailureDoesNotMutateCachedProviderConfig(t *testing.T
 	}
 	if got := hasFinalizer(storedPC, finalizerName); !got {
 		t.Errorf("hasFinalizer(%q, %q) = %v, want true", storedPC.GetName(), finalizerName, got)
+	}
+}
+
+func findProviderConfigControllerRunningMetric(t *testing.T, tenantUID, controllerName string) (float64, bool) {
+	t.Helper()
+	mg, ok := mtmetrics.DefaultMultiGatherer.(*mtmetrics.MultiGatherer)
+	if !ok {
+		t.Fatalf("Expected DefaultMultiGatherer to be *mtmetrics.MultiGatherer")
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather from DefaultMultiGatherer: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != providerConfigControllerRunningMetricName {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := make(map[string]string)
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["tenant_uid"] == tenantUID && labels["controller"] == controllerName {
+				return m.GetGauge().GetValue(), true
+			}
+		}
+	}
+	return 0, false
+}
+
+func TestManagerProviderConfigControllerRunningMetric(t *testing.T) {
+	ctx := context.Background()
+	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	const (
+		finalizerName = "multiproject.networking.gke.io/neg-cleanup"
+		pcName        = "test-pc-lifecycle-metric"
+		tenantUID     = "tenant-uid-lifecycle-metric"
+	)
+	defer mtmetrics.CleanupTenant(tenantUID)
+
+	manager := newManager(
+		dynamicClient,
+		finalizerName,
+		mockStarter,
+	)
+
+	pc := createTestProviderConfig(pcName)
+	if err := unstructured.SetNestedField(pc.Object, tenantUID, "spec", "principalInfo", "id"); err != nil {
+		t.Fatalf("Failed to set tenant UID: %v", err)
+	}
+	if err := createProviderConfigInClient(ctx, dynamicClient, pc); err != nil {
+		t.Fatalf("Failed to create test ProviderConfig: %v", err)
+	}
+
+	// 1. Simulate startup failure -> gauge should be 0 with controller="neg"
+	mockStarter.shouldFailStart = true
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err == nil {
+		t.Fatal("Expected start to fail, got nil")
+	}
+	val, found := findProviderConfigControllerRunningMetric(t, tenantUID, "neg")
+	if !found {
+		t.Fatalf("Expected %s metric for tenant %q controller \"neg\" after failed start", providerConfigControllerRunningMetricName, tenantUID)
+	}
+	if val != 0 {
+		t.Errorf("Expected %s = 0 after failed start, got %v", providerConfigControllerRunningMetricName, val)
+	}
+
+	// 2. Retry and succeed -> gauge should transition to 1
+	mockStarter.shouldFailStart = false
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Expected retry start to succeed, got: %v", err)
+	}
+	val, found = findProviderConfigControllerRunningMetric(t, tenantUID, "neg")
+	if !found {
+		t.Fatalf("Expected %s metric for tenant %q controller \"neg\" after successful start", providerConfigControllerRunningMetricName, tenantUID)
+	}
+	if val != 1 {
+		t.Errorf("Expected %s = 1 after successful start, got %v", providerConfigControllerRunningMetricName, val)
+	}
+
+	// 3. ForceCleanupTenant -> metric should be unregistered
+	manager.ForceCleanupTenant(pcName)
+	if _, found := findProviderConfigControllerRunningMetric(t, tenantUID, "neg"); found {
+		t.Errorf("Expected %s metric for tenant %q to be unregistered after ForceCleanupTenant", providerConfigControllerRunningMetricName, tenantUID)
+	}
+	// Ensure dto_pb import is used if needed
+	var _ *dto_pb.MetricFamily
+}
+
+func TestManagerWithExplicitControllerNameAndSharedFactory(t *testing.T) {
+	ctx := context.Background()
+	dynamicClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	const (
+		finalizerName  = "multiproject.networking.gke.io/custom-finalizer"
+		controllerName = "ccm"
+		pcName         = "test-pc-explicit-controller"
+		tenantUID      = "tenant-uid-explicit-controller"
+	)
+	defer mtmetrics.CleanupTenant(tenantUID)
+
+	manager := newManagerWithControllerName(
+		dynamicClient,
+		finalizerName,
+		controllerName,
+		mockStarter,
+	)
+
+	pc := createTestProviderConfig(pcName)
+	if err := unstructured.SetNestedField(pc.Object, tenantUID, "spec", "principalInfo", "id"); err != nil {
+		t.Fatalf("Failed to set tenant UID: %v", err)
+	}
+	if err := createProviderConfigInClient(ctx, dynamicClient, pc); err != nil {
+		t.Fatalf("Failed to create test ProviderConfig: %v", err)
+	}
+
+	// Simulate child controller also using GetOrCreateFactory(tenantUID) before failing.
+	mockStarter.shouldFailStart = true
+	childFactory := mtmetrics.GetOrCreateFactory(tenantUID)
+	childFactory.Cleanup()
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err == nil {
+		t.Fatal("Expected start to fail, got nil")
+	}
+	val, found := findProviderConfigControllerRunningMetric(t, tenantUID, controllerName)
+	if !found {
+		t.Fatalf("Expected %s metric for tenant %q controller %q after failed start", providerConfigControllerRunningMetricName, tenantUID, controllerName)
+	}
+	if val != 0 {
+		t.Errorf("Expected %s = 0 after failed start, got %v", providerConfigControllerRunningMetricName, val)
+	}
+
+	// Retry succeeds while sharing the same cached factory in tenantFactories[tenantUID].
+	mockStarter.shouldFailStart = false
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("Expected retry start to succeed, got: %v", err)
+	}
+	val, found = findProviderConfigControllerRunningMetric(t, tenantUID, controllerName)
+	if !found {
+		t.Fatalf("Expected %s metric for tenant %q controller %q after successful start", providerConfigControllerRunningMetricName, tenantUID, controllerName)
+	}
+	if val != 1 {
+		t.Errorf("Expected %s = 1 after successful start, got %v", providerConfigControllerRunningMetricName, val)
+	}
+
+	manager.ForceCleanupTenant(pcName)
+	if _, found := findProviderConfigControllerRunningMetric(t, tenantUID, controllerName); found {
+		t.Errorf("Expected %s metric for tenant %q to be unregistered after ForceCleanupTenant", providerConfigControllerRunningMetricName, tenantUID)
 	}
 }

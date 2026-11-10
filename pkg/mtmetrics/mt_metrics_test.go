@@ -1428,3 +1428,180 @@ func TestGlobalMetricsTracker_FlatMapDesign(t *testing.T) {
 	}
 	tracker.mu.Unlock()
 }
+
+func TestGetOrCreateFactoryAndCleanupTenant(t *testing.T) {
+	const tenantUID = "test-1to1to1-tenant"
+	defer CleanupTenant(tenantUID)
+
+	f1 := GetOrCreateFactory(tenantUID)
+	f2 := GetOrCreateFactory(tenantUID)
+	if f1 != f2 {
+		t.Fatalf("Expected GetOrCreateFactory to return identical factory instance, got %p vs %p", f1, f2)
+	}
+	if f1.Registry() != f2.Registry() {
+		t.Fatalf("Expected GetOrCreateFactory to return identical Registry instance")
+	}
+
+	g, err := f1.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_1to1to1_gauge",
+		Help: "test help",
+	}, []string{"controller"})
+	if err != nil {
+		t.Fatalf("Failed to create gauge vec: %v", err)
+	}
+	g.WithLabelValues("neg").Set(1)
+
+	mg, ok := DefaultMultiGatherer.(*MultiGatherer)
+	if !ok {
+		t.Fatalf("Expected DefaultMultiGatherer to be *MultiGatherer")
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("MultiGatherer.Gather() failed: %v", err)
+	}
+	var found bool
+	for _, mf := range mfs {
+		if mf.GetName() == "test_1to1to1_gauge" {
+			for _, m := range mf.Metric {
+				labelsMap := make(map[string]string)
+				for _, l := range m.Label {
+					labelsMap[l.GetName()] = l.GetValue()
+				}
+				if labelsMap["tenant_uid"] == tenantUID && labelsMap["controller"] == "neg" {
+					found = true
+					if m.Gauge.GetValue() != 1 {
+						t.Errorf("Expected gauge value 1, got %f", m.Gauge.GetValue())
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Expected test_1to1to1_gauge for tenant %q in DefaultMultiGatherer", tenantUID)
+	}
+
+	CleanupTenant(tenantUID)
+	mfsAfter, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("MultiGatherer.Gather() after CleanupTenant failed: %v", err)
+	}
+	for _, mf := range mfsAfter {
+		if mf.GetName() == "test_1to1to1_gauge" {
+			for _, m := range mf.Metric {
+				for _, l := range m.Label {
+					if l.GetName() == "tenant_uid" && l.GetValue() == tenantUID {
+						t.Errorf("Expected tenant %q to be unregistered from DefaultMultiGatherer after CleanupTenant", tenantUID)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestCleanupFencesLateGaugeUpdates(t *testing.T) {
+	const tenantUID = "test-fenced-tenant"
+	defer CleanupTenant(tenantUID)
+
+	f := GetOrCreateFactory(tenantUID)
+	gv, err := f.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_fenced_gauge_vec",
+		Help: "test help",
+	}, []string{"worker"})
+	if err != nil {
+		t.Fatalf("Failed to create gauge vec: %v", err)
+	}
+	scalarGauge, err := f.NewGauge(prometheus.GaugeOpts{
+		Name: "test_fenced_scalar_gauge",
+		Help: "test help",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create scalar gauge: %v", err)
+	}
+
+	workerGauge := gv.WithLabelValues("w1")
+	workerGauge.Set(5)
+	scalarGauge.Set(3)
+
+	CleanupTenant(tenantUID)
+
+	// Simulate an in-flight worker writing after CleanupTenant has completed.
+	workerGauge.Set(42)
+	workerGauge.Inc()
+	workerGauge.Dec()
+	workerGauge.Add(10)
+	workerGauge.Sub(2)
+	workerGauge.SetToCurrentTime()
+	scalarGauge.Set(99)
+
+	DefaultGlobalTracker.mu.Lock()
+	defer DefaultGlobalTracker.mu.Unlock()
+	for k := range DefaultGlobalTracker.gaugeValues {
+		if k.tenantUID == tenantUID {
+			t.Errorf("Expected no zombie gauge values for closed tenant %q, found key %+v", tenantUID, k)
+		}
+	}
+}
+
+func TestOldFactoryCleanupDoesNotWipeRestartedFactory(t *testing.T) {
+	const tenantUID = "test-restart-race-tenant"
+	defer CleanupTenant(tenantUID)
+
+	// Initial tenant start creates f1.
+	f1 := GetOrCreateFactory(tenantUID)
+	g1, err := f1.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_restart_race_gauge",
+		Help: "test help",
+	}, []string{"label1"})
+	if err != nil {
+		t.Fatalf("Failed to create gauge vec on f1: %v", err)
+	}
+	oldWorkerGauge := g1.WithLabelValues("dns")
+	oldWorkerGauge.Set(1)
+
+	// ForceCleanupTenant runs before f1's shutdown goroutine finishes.
+	CleanupTenant(tenantUID)
+
+	// Tenant restarts and creates f2.
+	f2 := GetOrCreateFactory(tenantUID)
+	if f1 == f2 {
+		t.Fatalf("Expected a new factory instance after CleanupTenant")
+	}
+	g2, err := f2.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_restart_race_gauge",
+		Help: "test help",
+	}, []string{"label1"})
+	if err != nil {
+		t.Fatalf("Failed to create gauge vec on f2: %v", err)
+	}
+	g2.WithLabelValues("dns").Set(7)
+
+	// Late worker and late shutdown goroutine from f1 run after f2 is active.
+	oldWorkerGauge.Set(99)
+	f1.Cleanup()
+
+	if got := GetOrCreateFactory(tenantUID); got != f2 {
+		t.Fatalf("Expected f2 to remain cached in tenantFactories after f1.Cleanup(), got %p vs %p", got, f2)
+	}
+
+	mg, ok := DefaultMultiGatherer.(*MultiGatherer)
+	if !ok {
+		t.Fatalf("Expected DefaultMultiGatherer to be *MultiGatherer")
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("MultiGatherer.Gather() failed: %v", err)
+	}
+	verifyLocalGauge(t, mfs, "test_restart_race_gauge", tenantUID, "dns", 7)
+
+	DefaultGlobalTracker.mu.Lock()
+	lvsKey := serializeLabels([]string{"dns"})
+	val, exists := DefaultGlobalTracker.gaugeValues[metricKey{
+		name:      "test_restart_race_gauge",
+		lvsKey:    lvsKey,
+		tenantUID: tenantUID,
+	}]
+	DefaultGlobalTracker.mu.Unlock()
+	if !exists || val != 7 {
+		t.Errorf("Expected f2 tracker value 7 to remain intact after f1.Cleanup(), got %v (exists=%v)", val, exists)
+	}
+}
