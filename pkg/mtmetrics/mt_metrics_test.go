@@ -744,6 +744,7 @@ func TestMultiGatherer_ScalarCollision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gather failed (possible label collision on scalar metrics): %v", err)
 	}
+	mfs = withoutProcessStartTime(mfs)
 
 	if len(mfs) != 1 {
 		t.Fatalf("Expected 1 metric family, got %d", len(mfs))
