@@ -21,6 +21,7 @@ import (
 	"sort"
 	"sync"
 
+	"k8s.io/klog/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	dto_pb "github.com/prometheus/client_model/go"
 )
@@ -42,15 +43,47 @@ type TenantGathererRegistry interface {
 // to retrieve metrics from all registered tenants.
 // It is thread-safe.
 type MultiGatherer struct {
-	mu        sync.RWMutex
-	gatherers map[string]prometheus.Gatherer
+	mu               sync.RWMutex
+	gatherers        map[string]prometheus.Gatherer
+	processStartTime func() *dto_pb.MetricFamily
 }
 
 // NewMultiGatherer creates a new initialized MultiGatherer.
 func NewMultiGatherer() *MultiGatherer {
 	return &MultiGatherer{
-		gatherers: make(map[string]prometheus.Gatherer),
+		gatherers:        make(map[string]prometheus.Gatherer),
+		processStartTime: cachedProcessStartTime,
 	}
+}
+
+const processStartTimeMetric = "process_start_time_seconds"
+
+var (
+	processStartTimeOnce sync.Once
+	processStartTime     *dto_pb.MetricFamily
+)
+
+// cachedProcessStartTime returns process_start_time_seconds from the process
+// collector, gathered once since it never changes.
+func cachedProcessStartTime() *dto_pb.MetricFamily {
+	processStartTimeOnce.Do(func() {
+		reg := prometheus.NewRegistry()
+		if err := reg.Register(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{})); err != nil {
+			klog.Warningf("Registering process collector for %s: %v", processStartTimeMetric, err)
+			return
+		}
+		mfs, err := reg.Gather()
+		if err != nil {
+			klog.Warningf("Gathering %s: %v", processStartTimeMetric, err)
+		}
+		for _, mf := range mfs {
+			if mf.GetName() == processStartTimeMetric {
+				processStartTime = mf
+				return
+			}
+		}
+	})
+	return processStartTime
 }
 
 // Register registers a gatherer for a tenant. Returns an error if the tenant
@@ -74,7 +107,7 @@ func (m *MultiGatherer) Unregister(tenantUID string) {
 }
 
 // Gather implements prometheus.Gatherer. It gathers metrics from all registered
-// tenant gatherers and merges them.
+// tenant gatherers, merges them, and adds process_start_time_seconds.
 // It uses a Copy-on-Read pattern to minimize lock hold duration and sorts
 // gatherers by tenantUID to ensure deterministic metric order.
 func (m *MultiGatherer) Gather() ([]*dto_pb.MetricFamily, error) {
@@ -91,7 +124,26 @@ func (m *MultiGatherer) Gather() ([]*dto_pb.MetricFamily, error) {
 	}
 	m.mu.RUnlock()
 
-	return gatherers.Gather()
+	mfs, err := gatherers.Gather()
+	return m.addProcessStartTime(mfs), err
+}
+
+func (m *MultiGatherer) addProcessStartTime(mfs []*dto_pb.MetricFamily) []*dto_pb.MetricFamily {
+	if len(mfs) == 0 || m.processStartTime == nil {
+		return mfs
+	}
+	for _, mf := range mfs {
+		if mf.GetName() == processStartTimeMetric {
+			return mfs
+		}
+	}
+	pst := m.processStartTime()
+	if pst == nil {
+		return mfs
+	}
+	mfs = append(mfs, pst)
+	sort.Slice(mfs, func(i, j int) bool { return mfs[i].GetName() < mfs[j].GetName() })
+	return mfs
 }
 
 // DefaultMultiGatherer is the default TenantGathererRegistry implementation

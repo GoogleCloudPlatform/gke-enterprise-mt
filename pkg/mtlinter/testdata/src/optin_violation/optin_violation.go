@@ -25,10 +25,8 @@ var (
 	ignoredDocCounter prometheus.Counter
 )
 
-// mtlint:ignore intentional process-level metric block
-var (
-	ignoredBlockCounter prometheus.Counter
-)
+// mtlint:ignore intentional process-level single var metric
+var ignoredSingleCounter prometheus.Counter
 
 func init() {
 	prometheus.MustRegister(globalCounter)                   // want "direct call to prometheus.MustRegister is forbidden; use mtmetrics factory instead"
@@ -36,5 +34,6 @@ func init() {
 	prometheus.DefaultRegisterer.Register(globalCounter)     // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
 	prometheus.DefaultRegisterer.MustRegister(globalCounter) // want "registration to prometheus.DefaultRegisterer is forbidden; use mtmetrics factory instead"
 	prometheus.MustRegister(ignoredCounter)                  // mtlint:ignore intentional process-level registration
-	prometheus.DefaultRegisterer.MustRegister(ignoredCounter) // mtlint:ignore intentional process-level registration
+	// mtlint:ignore intentional process-level registration with doc comment
+	prometheus.DefaultRegisterer.MustRegister(ignoredCounter)
 }
