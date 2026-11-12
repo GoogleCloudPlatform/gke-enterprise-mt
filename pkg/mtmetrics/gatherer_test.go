@@ -18,6 +18,7 @@ package mtmetrics
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -54,6 +55,7 @@ func TestMultiGatherer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gather failed: %v", err)
 	}
+	mfs = withoutProcessStartTime(mfs)
 
 	if len(mfs) != 1 {
 		t.Fatalf("Expected 1 metric family, got %d", len(mfs))
@@ -75,6 +77,7 @@ func TestMultiGatherer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gather failed after unregister: %v", err)
 	}
+	mfs = withoutProcessStartTime(mfs)
 
 	if len(mfs) != 1 {
 		t.Fatalf("Expected 1 metric family, got %d", len(mfs))
@@ -150,6 +153,7 @@ func TestMultiGatherer_Ordering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gather failed: %v", err)
 	}
+	mfs = withoutProcessStartTime(mfs)
 
 	if len(mfs) != 1 {
 		t.Fatalf("Expected 1 metric family, got %d", len(mfs))
@@ -174,5 +178,115 @@ func TestMultiGatherer_Ordering(t *testing.T) {
 	}
 	if getTenantUID(mf.Metric[1]) != "tenant-B" {
 		t.Errorf("Expected second metric to be tenant-B, got %q", getTenantUID(mf.Metric[1]))
+	}
+}
+
+func withoutProcessStartTime(mfs []*dto_pb.MetricFamily) []*dto_pb.MetricFamily {
+	var out []*dto_pb.MetricFamily
+	for _, mf := range mfs {
+		if mf.GetName() != processStartTimeMetric {
+			out = append(out, mf)
+		}
+	}
+	return out
+}
+
+func newTenantRegistry(t *testing.T, tenantUID string) *prometheus.Registry {
+	t.Helper()
+	reg := prometheus.NewRegistry()
+	vec := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "m1", Help: "h1"}, []string{"tenant_uid"})
+	reg.MustRegister(vec)
+	vec.WithLabelValues(tenantUID).Inc()
+	return reg
+}
+
+func TestMultiGatherer_AddsProcessStartTime(t *testing.T) {
+	mg := NewMultiGatherer()
+	if err := mg.Register("tenant-A", newTenantRegistry(t, "tenant-A")); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() failed: %v", err)
+	}
+	var names []string
+	for _, mf := range mfs {
+		names = append(names, mf.GetName())
+	}
+	if want := []string{"m1", processStartTimeMetric}; !slices.Equal(names, want) {
+		t.Fatalf("Gather() families = %v, want %v", names, want)
+	}
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	pmfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("process collector Gather() failed: %v", err)
+	}
+	var want float64
+	for _, mf := range pmfs {
+		if mf.GetName() == processStartTimeMetric {
+			want = mf.GetMetric()[0].GetGauge().GetValue()
+		}
+	}
+	if got := mfs[1].GetMetric()[0].GetGauge().GetValue(); got != want || got == 0 {
+		t.Errorf("%s = %v, want %v (non-zero, same as the process collector)", processStartTimeMetric, got, want)
+	}
+}
+
+func TestMultiGatherer_KeepsTenantProcessStartTime(t *testing.T) {
+	mg := NewMultiGatherer()
+	reg := newTenantRegistry(t, "tenant-A")
+	pst := prometheus.NewGauge(prometheus.GaugeOpts{Name: processStartTimeMetric, Help: "Start time."})
+	reg.MustRegister(pst)
+	pst.Set(42)
+	if err := mg.Register("tenant-A", reg); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() failed: %v", err)
+	}
+	var got []float64
+	for _, mf := range mfs {
+		if mf.GetName() == processStartTimeMetric {
+			for _, m := range mf.GetMetric() {
+				got = append(got, m.GetGauge().GetValue())
+			}
+		}
+	}
+	if !slices.Equal(got, []float64{42}) {
+		t.Errorf("%s values = %v, want [42] (tenant value kept, not duplicated)", processStartTimeMetric, got)
+	}
+}
+
+func TestMultiGatherer_NoProcessStartTimeWithoutTenantMetrics(t *testing.T) {
+	mg := NewMultiGatherer()
+	if err := mg.Register("tenant-A", prometheus.NewRegistry()); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() failed: %v", err)
+	}
+	if len(mfs) != 0 {
+		t.Errorf("Gather() returned %d families, want 0 when tenants have no metrics", len(mfs))
+	}
+}
+
+func TestMultiGatherer_ProcessStartTimeUnavailable(t *testing.T) {
+	mg := NewMultiGatherer()
+	mg.processStartTime = func() *dto_pb.MetricFamily { return nil }
+	if err := mg.Register("tenant-A", newTenantRegistry(t, "tenant-A")); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	mfs, err := mg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() failed: %v", err)
+	}
+	if len(mfs) != 1 || mfs[0].GetName() != "m1" {
+		t.Errorf("Gather() = %v, want only m1 when the start time is unavailable", mfs)
 	}
 }
