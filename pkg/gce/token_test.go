@@ -87,6 +87,68 @@ func TestTokenURLForProviderConfig(t *testing.T) {
 			},
 			wantTokenURL: "https://staging-gkeauth.googleapis.com/v60/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
 		},
+		{
+			name:     "authConfig tokenURL matching existing origin succeeds",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantTokenURL: "https://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+		},
+		{
+			name:     "authConfig tokenURL on external host is rejected",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://attacker.example.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:     "authConfig tokenURL with plaintext http scheme is rejected",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "http://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:     "authConfig tokenURL with userinfo authority confusion is rejected",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://gkeauth.googleapis.com@attacker.example.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:     "fallback provider config with path traversal in name is rejected",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "../../other",
+					Labels: map[string]string{tenantLabelKey: "example-tenant"},
+				},
+				Spec: providerconfigv1.ProviderConfigSpec{
+					ProjectNumber: 67890,
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {

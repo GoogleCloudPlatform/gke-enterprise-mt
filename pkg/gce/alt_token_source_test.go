@@ -178,4 +178,43 @@ func TestAltTokenSource_ErrorCases(t *testing.T) {
 			t.Fatal("alt.Token() succeeded with cancelled context, want error")
 		}
 	})
+
+	t.Run("redirect response does not follow or forward Authorization header", func(t *testing.T) {
+		const metadataSAToken = "metadata-sa-token-do-not-leak"
+		metaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": metadataSAToken,
+				"expires_in":   3600,
+				"token_type":   "Bearer",
+			})
+		}))
+		defer metaSrv.Close()
+		t.Setenv("GCE_METADATA_HOST", strings.TrimPrefix(metaSrv.URL, "http://"))
+
+		var redirectTargetHits atomic.Int32
+		var leakedAuth atomic.Value
+		redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			redirectTargetHits.Add(1)
+			leakedAuth.Store(r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"accessToken": fakeToken,
+				"expireTime":  time.Now().Add(5 * time.Minute),
+			})
+		}))
+		defer redirectTarget.Close()
+
+		originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, redirectTarget.URL+"/steal", http.StatusTemporaryRedirect)
+		}))
+		defer originSrv.Close()
+
+		ts := NewAltTokenSource(context.Background(), originSrv.URL+"/token/", `{}`)
+		_, err := ts.Token()
+		if err == nil {
+			t.Fatal("NewAltTokenSource().Token() succeeded across HTTP redirect, want error")
+		}
+		if got := redirectTargetHits.Load(); got != 0 {
+			t.Fatalf("redirect target received %d request(s) (Authorization=%v), want 0", got, leakedAuth.Load())
+		}
+	})
 }

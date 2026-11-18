@@ -3,6 +3,7 @@ package gce
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,7 @@ const (
 )
 
 // TokenURLForProviderConfig generates the token URL based on the provider configuration.
-// It first checks for the new AuthConfig spec field. If present, it returns the TokenURL from there.
+// It first checks for the new AuthConfig spec field. If present, it validates and returns the TokenURL from there.
 // As a fallback for backward compatibility, it checks for a tenant label to determine
 // if the token URL should be for a tenant project.
 func TokenURLForProviderConfig(existingTokenURL string, providerConfig *providerconfigv1.ProviderConfig) (string, error) {
@@ -24,6 +25,9 @@ func TokenURLForProviderConfig(existingTokenURL string, providerConfig *provider
 
 	// Prioritize the new AuthConfig field as the source of truth.
 	if providerConfig.Spec.AuthConfig != nil && providerConfig.Spec.AuthConfig.TokenURL != "" {
+		if err := validateAuthConfigTokenURL(existingTokenURL, providerConfig.Spec.AuthConfig.TokenURL); err != nil {
+			return "", err
+		}
 		return providerConfig.Spec.AuthConfig.TokenURL, nil
 	}
 
@@ -41,6 +45,9 @@ func TokenURLForProviderConfig(existingTokenURL string, providerConfig *provider
 // The constructed URL is of the form:
 // projects/{CLUSTER_PROJECT_NUMBER}/locations/{CLUSTER_LOCATION}/clusters/{CLUSTER_NAME}/tenantProjects/{TENANT_PROJECT_NUMBER}:generateTenantProjectToken
 func TokenURLForTenantProject(existingTokenURL string, tenantProjectNumber string) (string, error) {
+	if !isNumericProjectNumber(tenantProjectNumber) {
+		return "", fmt.Errorf("invalid tenant project number %q", tenantProjectNumber)
+	}
 	lastColonIndex := strings.LastIndex(existingTokenURL, ":")
 	if lastColonIndex == -1 || strings.Count(existingTokenURL, ":") != 2 {
 		return "", fmt.Errorf("invalid existing token URL format: %s, cannot extract base URL", existingTokenURL)
@@ -52,6 +59,12 @@ func TokenURLForTenantProject(existingTokenURL string, tenantProjectNumber strin
 
 // TokenURLFromProjectNumberAndName generates the token URL based on the project number and name.
 func TokenURLFromProjectNumberAndName(existingTokenURL string, projectNumber, name string) (string, error) {
+	if !isNumericProjectNumber(projectNumber) {
+		return "", fmt.Errorf("invalid project number %q", projectNumber)
+	}
+	if !isSafeResourceSegment(name) {
+		return "", fmt.Errorf("invalid tenant name %q", name)
+	}
 	location := extractLocationFromTokenURL(existingTokenURL)
 	if location == "" {
 		return "", fmt.Errorf("could not extract location from existing token URL: %s", existingTokenURL)
@@ -66,7 +79,78 @@ func TokenURLFromProjectNumberAndName(existingTokenURL string, projectNumber, na
 	// Format: {BASE_URL}/projects/{TENANT_PROJECT_NUMBER}/locations/{TENANT_LOCATION}/tenants/{TENANT_ID}:generateTenantToken
 	formatString := "%s/projects/%s/locations/%s/tenants/%s:generateTenantToken"
 	tokenURL := fmt.Sprintf(formatString, baseURL, projectNumber, location, name)
+	if err := validateAuthConfigTokenURL(existingTokenURL, tokenURL); err != nil {
+		return "", err
+	}
 	return tokenURL, nil
+}
+
+func validateAuthConfigTokenURL(existingTokenURL, authTokenURL string) error {
+	parsedAuth, err := url.Parse(authTokenURL)
+	if err != nil {
+		return fmt.Errorf("invalid AuthConfig token URL %q: %w", authTokenURL, err)
+	}
+	if parsedAuth.Scheme != "https" || parsedAuth.User != nil || parsedAuth.Opaque != "" || parsedAuth.RawQuery != "" || parsedAuth.Fragment != "" || parsedAuth.Host == "" || strings.ContainsAny(parsedAuth.Host, `@\/`) {
+		return fmt.Errorf("invalid AuthConfig token URL origin %q: must be an https URL without userinfo, query, or fragment", authTokenURL)
+	}
+	if parsedAuth.RawPath != "" || strings.Contains(parsedAuth.Path, `\`) {
+		return fmt.Errorf("invalid AuthConfig token URL path %q", authTokenURL)
+	}
+	trimmedPath := strings.TrimPrefix(parsedAuth.Path, "/")
+	if trimmedPath == "" {
+		return fmt.Errorf("invalid AuthConfig token URL path %q", authTokenURL)
+	}
+	for _, seg := range strings.Split(trimmedPath, "/") {
+		if seg == "" || seg == "." || seg == ".." || strings.Contains(seg, "..") {
+			return fmt.Errorf("invalid AuthConfig token URL path segment in %q", authTokenURL)
+		}
+	}
+	if !hasAllowedTokenMethodSuffix(parsedAuth.Path) {
+		return fmt.Errorf("invalid AuthConfig token URL %q: path must end with :generateToken, :generateTenantToken, or :generateTenantProjectToken", authTokenURL)
+	}
+
+	if existingTokenURL != "" {
+		parsedExisting, err := url.Parse(existingTokenURL)
+		if err != nil || parsedExisting.Scheme != "https" || parsedExisting.User != nil || parsedExisting.Host == "" {
+			return fmt.Errorf("invalid existing token URL %q", existingTokenURL)
+		}
+		if !strings.EqualFold(parsedAuth.Host, parsedExisting.Host) {
+			return fmt.Errorf("AuthConfig token URL host %q does not match existing token URL host %q", parsedAuth.Host, parsedExisting.Host)
+		}
+		return nil
+	}
+
+	host := strings.ToLower(parsedAuth.Hostname())
+	if host != "gkeauth.googleapis.com" && !strings.HasSuffix(host, "-gkeauth.googleapis.com") && !strings.HasSuffix(host, "-gkeauth.sandbox.googleapis.com") {
+		return fmt.Errorf("untrusted AuthConfig token URL host %q", parsedAuth.Host)
+	}
+	return nil
+}
+
+func hasAllowedTokenMethodSuffix(path string) bool {
+	return strings.HasSuffix(path, ":generateToken") ||
+		strings.HasSuffix(path, ":generateTenantToken") ||
+		strings.HasSuffix(path, ":generateTenantProjectToken")
+}
+
+func isNumericProjectNumber(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	v, err := strconv.ParseUint(s, 10, 64)
+	return err == nil && v > 0
+}
+
+func isSafeResourceSegment(s string) bool {
+	if s == "" || s == "." || s == ".." || strings.Contains(s, "..") {
+		return false
+	}
+	return !strings.ContainsAny(s, `/\?#@: %`+"\t\r\n")
 }
 
 // TokenBodyForProviderConfig updates the project number in the token body based on the ProviderConfig.
