@@ -132,4 +132,9 @@ type TenantStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+const (
+	// ConditionTypeDeleting indicates that the Tenant is being deleted by the Tenancy Service.
+	ConditionTypeDeleting = "Deleting"
+)
+
 // (-- LINT.ThenChange(//depot/google3/cloud/kubernetes/tenancy/apis/tenant/v1/tenant_types.go) --)
