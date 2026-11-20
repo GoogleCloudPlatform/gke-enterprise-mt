@@ -17,6 +17,7 @@
 package mtmetrics
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -812,6 +813,56 @@ func TestTracker_GlobalRegistryBypass(t *testing.T) {
 		t.Fatalf("Failed to gather global: %v", err)
 	}
 	verifyStdMetric(t, globalMfs, "bypass_counter", "val1", 1)
+}
+
+// Concurrent factories must register the shared tracker only once.
+func TestNewMTMetricFactory_ConcurrentTrackerRegistration(t *testing.T) {
+	const (
+		iterations = 200
+		tenants    = 8
+	)
+	for i := 0; i < iterations; i++ {
+		globalReg := prometheus.NewRegistry()
+		tracker := NewGlobalMetricsTracker()
+
+		factories := make([]*MTMetricFactory, tenants)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for j := range factories {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				<-start
+				factories[j] = NewMTMetricFactory(fmt.Sprintf("tenant-%d", j), globalReg, tracker)
+			}(j)
+		}
+		close(start)
+		wg.Wait()
+
+		for j, f := range factories {
+			g, err := f.NewGaugeVec(prometheus.GaugeOpts{Name: "concurrent_gauge", Help: "help"}, []string{"label1"})
+			if err != nil {
+				t.Fatalf("iteration %d: NewGaugeVec() for tenant-%d failed: %v", i, j, err)
+			}
+			g.WithLabelValues("val1").Set(1)
+		}
+
+		mfs, err := globalReg.Gather()
+		if err != nil {
+			t.Fatalf("iteration %d: global Gather() failed (tracker registered more than once?): %v", i, err)
+		}
+		var got []float64
+		for _, mf := range mfs {
+			if mf.GetName() == "concurrent_gauge" {
+				for _, m := range mf.GetMetric() {
+					got = append(got, m.GetGauge().GetValue())
+				}
+			}
+		}
+		if len(got) != 1 || got[0] != tenants {
+			t.Fatalf("iteration %d: concurrent_gauge values = %v, want one series summed to %d", i, got, tenants)
+		}
+	}
 }
 
 func TestMTGauge_AddSubDec(t *testing.T) {
