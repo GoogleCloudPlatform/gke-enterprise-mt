@@ -62,6 +62,9 @@ func (a *AltTokenSource) Token() (*oauth2.Token, error) {
 func NewAltTokenSource(ctx context.Context, tokenURL, tokenBody string) oauth2.TokenSource {
 	client := oauth2.NewClient(ctx, google.ComputeTokenSource(""))
 	client.Timeout = tokenRequestTimeout
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	ts := &AltTokenSource{
 		ctx:         ctx,
 		oauthClient: client,
