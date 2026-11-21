@@ -3,15 +3,20 @@ package framework
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
 	"sync"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func createProviderConfigInClient(ctx context.Context, client dynamic.Interface, pc *unstructured.Unstructured) error {
@@ -726,5 +731,569 @@ func TestManagerStartUpdateFailureDoesNotMutateCachedProviderConfig(t *testing.T
 	}
 	if got := hasFinalizer(storedPC, finalizerName); !got {
 		t.Errorf("hasFinalizer(%q, %q) = %v, want true", storedPC.GetName(), finalizerName, got)
+	}
+}
+
+func newConflictError(name string) error {
+	return apierrors.NewConflict(
+		schema.GroupResource{Group: providerConfigGVR.Group, Resource: providerConfigGVR.Resource},
+		name,
+		fmt.Errorf("optimistic locking failure"),
+	)
+}
+
+func TestManagerStartRetriesOnConflictAndPreservesConcurrentFinalizers(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	concurrentFinalizers := []string{"other-controller-1", "other-controller-2"}
+	var conflictAttempts int
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if conflictAttempts < len(concurrentFinalizers) {
+			concurrentFinalizer := concurrentFinalizers[conflictAttempts]
+			conflictAttempts++
+
+			tracker := fakeClient.Tracker()
+			obj, err := tracker.Get(providerConfigGVR, "", pc.GetName())
+			if err != nil {
+				return true, nil, err
+			}
+			latest := obj.(*unstructured.Unstructured).DeepCopy()
+			latest.SetFinalizers(append(latest.GetFinalizers(), concurrentFinalizer))
+			if err := tracker.Update(providerConfigGVR, latest, ""); err != nil {
+				return true, nil, err
+			}
+			return true, nil, newConflictError(pc.GetName())
+		}
+		return false, nil, nil
+	})
+
+	// Pass stale pc without any finalizers.
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StartControllersForProviderConfig(%q) failed: %v", pc.GetName(), err)
+	}
+	if got, want := conflictAttempts, len(concurrentFinalizers); got != want {
+		t.Errorf("conflictAttempts = %d, want %d", got, want)
+	}
+	if got, want := mockStarter.getStartCallCount(), 1; got != want {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want %d", got, want)
+	}
+	if hasFinalizer(pc, finalizerName) {
+		t.Errorf("cached ProviderConfig should not be mutated in-place, got finalizers %v", pc.GetFinalizers())
+	}
+
+	storedPC, err := providerConfigFromClient(ctx, fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	wantFinalizers := []string{"other-controller-1", "other-controller-2", finalizerName}
+	if diff := cmp.Diff(wantFinalizers, storedPC.GetFinalizers()); diff != "" {
+		t.Errorf("stored finalizers mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestManagerStartFailsAfterConflictRetriesExhausted(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	manager := newManager(fakeClient, "test-finalizer", mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	var updateAttempts int
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempts++
+		return true, nil, newConflictError(pc.GetName())
+	})
+
+	err := manager.StartControllersForProviderConfig(ctx, pc)
+	if !apierrors.IsConflict(err) {
+		t.Fatalf("StartControllersForProviderConfig(%q) error = %v, want conflict error", pc.GetName(), err)
+	}
+	if updateAttempts <= 1 {
+		t.Errorf("updateAttempts = %d, want > 1 after conflict retries", updateAttempts)
+	}
+	if got := mockStarter.getStartCallCount(); got != 0 {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want 0", got)
+	}
+	if _, exists := manager.controllers.Get(pc.GetName()); exists {
+		t.Errorf("controller map entry should be removed after finalizer failure")
+	}
+}
+
+func TestManagerStartFailureRollbackRetriesOnConflictAndPreservesConcurrentFinalizers(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+	mockStarter.shouldFailStart = true
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	pc.SetFinalizers([]string{"other-controller-1"})
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	// Pass a local copy without finalizerName so Start adds it, then fails and rolls back.
+	localPC := createTestProviderConfig("test-pc")
+
+	var updateCount int
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		updateCount++
+		// Let the initial add succeed (updateCount == 1); inject 409 on the first rollback attempt (updateCount == 2).
+		if updateCount == 2 {
+			tracker := fakeClient.Tracker()
+			obj, err := tracker.Get(providerConfigGVR, "", pc.GetName())
+			if err != nil {
+				return true, nil, err
+			}
+			latest := obj.(*unstructured.Unstructured).DeepCopy()
+			latest.SetFinalizers(append(latest.GetFinalizers(), "other-controller-2"))
+			if err := tracker.Update(providerConfigGVR, latest, ""); err != nil {
+				return true, nil, err
+			}
+			return true, nil, newConflictError(pc.GetName())
+		}
+		return false, nil, nil
+	})
+
+	if err := manager.StartControllersForProviderConfig(ctx, localPC); err == nil {
+		t.Fatal("StartControllersForProviderConfig() = nil, want start error")
+	}
+	if got, want := updateCount, 3; got != want {
+		t.Errorf("updateCount = %d, want %d (1 add + 1 conflicted rollback + 1 retried rollback)", got, want)
+	}
+
+	storedPC, err := providerConfigFromClient(ctx, fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	wantFinalizers := []string{"other-controller-1", "other-controller-2"}
+	if diff := cmp.Diff(wantFinalizers, storedPC.GetFinalizers()); diff != "" {
+		t.Errorf("stored finalizers after rollback mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestManagerStopRetriesOnConflictAndPreservesConcurrentFinalizers(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	pc.SetFinalizers([]string{"other-controller-1", finalizerName, "other-controller-2"})
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StartControllersForProviderConfig(%q) failed: %v", pc.GetName(), err)
+	}
+
+	conflictInjected := false
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if conflictInjected {
+			return false, nil, nil
+		}
+		conflictInjected = true
+
+		// Simulate another controller concurrently removing other-controller-1 and adding other-controller-3.
+		tracker := fakeClient.Tracker()
+		obj, err := tracker.Get(providerConfigGVR, "", pc.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		latest := obj.(*unstructured.Unstructured).DeepCopy()
+		latest.SetFinalizers([]string{finalizerName, "other-controller-2", "other-controller-3"})
+		if err := tracker.Update(providerConfigGVR, latest, ""); err != nil {
+			return true, nil, err
+		}
+		return true, nil, newConflictError(pc.GetName())
+	})
+
+	if err := manager.StopControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StopControllersForProviderConfig(%q) failed: %v", pc.GetName(), err)
+	}
+	if !conflictInjected {
+		t.Fatal("expected conflict reactor to trigger")
+	}
+
+	storedPC, err := providerConfigFromClient(ctx, fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	wantFinalizers := []string{"other-controller-2", "other-controller-3"}
+	if diff := cmp.Diff(wantFinalizers, storedPC.GetFinalizers()); diff != "" {
+		t.Errorf("stored finalizers after stop mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestManagerStopHandlesNotFoundDuringUpdate(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	pc.SetFinalizers([]string{finalizerName})
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		_ = fakeClient.Tracker().Delete(providerConfigGVR, "", pc.GetName())
+		return true, nil, apierrors.NewNotFound(
+			schema.GroupResource{Group: providerConfigGVR.Group, Resource: providerConfigGVR.Resource},
+			pc.GetName(),
+		)
+	})
+
+	if err := manager.StopControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StopControllersForProviderConfig(%q) returned unexpected error when deleted concurrently: %v", pc.GetName(), err)
+	}
+}
+
+func TestManagerConcurrentControllersFinalizerRace(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+
+	// Enforce ResourceVersion optimistic locking on the fake client just like kube-apiserver.
+	var trackerMu sync.Mutex
+	var nextRV int64 = 1
+	fakeClient.PrependReactor("create", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		trackerMu.Lock()
+		defer trackerMu.Unlock()
+		createAction := action.(k8stesting.CreateAction)
+		obj := createAction.GetObject().(*unstructured.Unstructured).DeepCopy()
+		obj.SetResourceVersion(strconv.FormatInt(nextRV, 10))
+		nextRV++
+		if err := fakeClient.Tracker().Add(obj); err != nil {
+			return true, nil, err
+		}
+		return true, obj.DeepCopy(), nil
+	})
+	fakeClient.PrependReactor("get", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		trackerMu.Lock()
+		defer trackerMu.Unlock()
+		getAction := action.(k8stesting.GetAction)
+		obj, err := fakeClient.Tracker().Get(providerConfigGVR, "", getAction.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		return true, obj.(*unstructured.Unstructured).DeepCopy(), nil
+	})
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		trackerMu.Lock()
+		defer trackerMu.Unlock()
+		updateAction := action.(k8stesting.UpdateAction)
+		incoming := updateAction.GetObject().(*unstructured.Unstructured).DeepCopy()
+		curObj, err := fakeClient.Tracker().Get(providerConfigGVR, "", incoming.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		current := curObj.(*unstructured.Unstructured)
+		if incoming.GetResourceVersion() != current.GetResourceVersion() {
+			return true, nil, newConflictError(incoming.GetName())
+		}
+		incoming.SetResourceVersion(strconv.FormatInt(nextRV, 10))
+		nextRV++
+		if err := fakeClient.Tracker().Update(providerConfigGVR, incoming, ""); err != nil {
+			return true, nil, err
+		}
+		return true, incoming.DeepCopy(), nil
+	})
+
+	initialPC := createTestProviderConfig("shared-pc")
+	createdPC, err := fakeClient.Resource(providerConfigGVR).Create(ctx, initialPC, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create(%q) failed: %v", initialPC.GetName(), err)
+	}
+
+	finalizers := []string{
+		"ccm.gke.io/finalizer",
+		"neg.gke.io/finalizer",
+		"clouddns.gke.io/finalizer",
+		"gateway.gke.io/finalizer",
+		"filestorecsi.gke.io/finalizer",
+	}
+
+	managers := make([]*manager, len(finalizers))
+	for i, fin := range finalizers {
+		managers[i] = newManager(fakeClient, fin, newMockControllerStarter())
+	}
+
+	// All 5 controllers observe the newly created ProviderConfig simultaneously.
+	var startWG sync.WaitGroup
+	startErrs := make([]error, len(managers))
+	for i, mgr := range managers {
+		startWG.Add(1)
+		go func(idx int, m *manager, cachedPC *unstructured.Unstructured) {
+			defer startWG.Done()
+			startErrs[idx] = m.StartControllersForProviderConfig(ctx, cachedPC)
+		}(i, mgr, createdPC.DeepCopy())
+	}
+	startWG.Wait()
+
+	for i, err := range startErrs {
+		if err != nil {
+			t.Fatalf("manager %d (%s) StartControllersForProviderConfig failed: %v", i, finalizers[i], err)
+		}
+	}
+
+	storedAfterStart, err := providerConfigFromClient(ctx, fakeClient, createdPC.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) after start failed: %v", createdPC.GetName(), err)
+	}
+	gotStartFinalizers := slices.Clone(storedAfterStart.GetFinalizers())
+	slices.Sort(gotStartFinalizers)
+	wantStartFinalizers := slices.Clone(finalizers)
+	slices.Sort(wantStartFinalizers)
+	if diff := cmp.Diff(wantStartFinalizers, gotStartFinalizers); diff != "" {
+		t.Errorf("finalizers after concurrent starts mismatch (-want +got):\n%s", diff)
+	}
+
+	// All 5 controllers observe DeletionTimestamp and stop simultaneously.
+	deletingPC := storedAfterStart.DeepCopy()
+	now := metav1.Now()
+	deletingPC.SetDeletionTimestamp(&now)
+
+	var stopWG sync.WaitGroup
+	stopErrs := make([]error, len(managers))
+	for i, mgr := range managers {
+		stopWG.Add(1)
+		go func(idx int, m *manager, cachedPC *unstructured.Unstructured) {
+			defer stopWG.Done()
+			stopErrs[idx] = m.StopControllersForProviderConfig(ctx, cachedPC)
+		}(i, mgr, deletingPC.DeepCopy())
+	}
+	stopWG.Wait()
+
+	for i, err := range stopErrs {
+		if err != nil {
+			t.Fatalf("manager %d (%s) StopControllersForProviderConfig failed: %v", i, finalizers[i], err)
+		}
+	}
+
+	storedAfterStop, err := providerConfigFromClient(ctx, fakeClient, createdPC.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) after stop failed: %v", createdPC.GetName(), err)
+	}
+	if got := storedAfterStop.GetFinalizers(); len(got) != 0 {
+		t.Errorf("finalizers after concurrent stops = %v, want empty", got)
+	}
+}
+
+// cancelAfterUpdate makes the fake client apply each ProviderConfig update and
+// then cancel the context, as if the caller was canceled right after the API
+// server committed the write.
+func cancelAfterUpdate(fakeClient *fake.FakeDynamicClient, cancel context.CancelFunc) {
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		obj := action.(k8stesting.UpdateAction).GetObject().(*unstructured.Unstructured).DeepCopy()
+		if err := fakeClient.Tracker().Update(providerConfigGVR, obj, ""); err != nil {
+			return true, nil, err
+		}
+		cancel()
+		return true, obj, nil
+	})
+}
+
+func TestManagerStartSucceedsWhenContextCanceledAfterFinalizerUpdate(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+	cancelAfterUpdate(fakeClient, cancel)
+
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StartControllersForProviderConfig(%q) = %v, want nil after the finalizer update succeeded", pc.GetName(), err)
+	}
+	if got, want := mockStarter.getStartCallCount(), 1; got != want {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want %d", got, want)
+	}
+
+	storedPC, err := providerConfigFromClient(context.Background(), fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	if !hasFinalizer(storedPC, finalizerName) {
+		t.Errorf("stored finalizers = %v, want %q present", storedPC.GetFinalizers(), finalizerName)
+	}
+}
+
+func TestManagerStopSucceedsWhenContextCanceledAfterFinalizerUpdate(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, newMockControllerStarter())
+
+	pc := createTestProviderConfig("test-pc")
+	pc.SetFinalizers([]string{"other-controller-1", finalizerName})
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+	cancelAfterUpdate(fakeClient, cancel)
+
+	if err := manager.StopControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StopControllersForProviderConfig(%q) = %v, want nil after the finalizer update succeeded", pc.GetName(), err)
+	}
+
+	storedPC, err := providerConfigFromClient(context.Background(), fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	if diff := cmp.Diff([]string{"other-controller-1"}, storedPC.GetFinalizers()); diff != "" {
+		t.Errorf("stored finalizers after stop mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestManagerStartSkipsProviderConfigAlreadyTerminatingOnServer covers a stale
+// informer cache: the cached object is live and has no finalizer, but the API
+// server already has a DeletionTimestamp on it.
+func TestManagerStartSkipsProviderConfigAlreadyTerminatingOnServer(t *testing.T) {
+	const finalizerName = "test-finalizer"
+	tests := []struct {
+		name             string
+		serverFinalizers []string
+	}{
+		{
+			name:             "finalizer absent on server",
+			serverFinalizers: []string{"other-controller-1"},
+		},
+		{
+			name:             "finalizer present on server",
+			serverFinalizers: []string{"other-controller-1", finalizerName},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+			mockStarter := newMockControllerStarter()
+			manager := newManager(fakeClient, finalizerName, mockStarter)
+
+			serverPC := createTestProviderConfig("test-pc")
+			serverPC.SetFinalizers(tc.serverFinalizers)
+			now := metav1.Now()
+			serverPC.SetDeletionTimestamp(&now)
+			if err := createProviderConfigInClient(ctx, fakeClient, serverPC); err != nil {
+				t.Fatalf("createProviderConfigInClient(%q) failed: %v", serverPC.GetName(), err)
+			}
+
+			var updateCalls int
+			fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				updateCalls++
+				return false, nil, nil
+			})
+
+			cachedPC := createTestProviderConfig("test-pc")
+			if err := manager.StartControllersForProviderConfig(ctx, cachedPC); err != nil {
+				t.Fatalf("StartControllersForProviderConfig(%q) = %v, want nil for a terminating ProviderConfig", cachedPC.GetName(), err)
+			}
+			if got := mockStarter.getStartCallCount(); got != 0 {
+				t.Errorf("mockStarter.getStartCallCount() = %d, want 0", got)
+			}
+			if updateCalls != 0 {
+				t.Errorf("updateCalls = %d, want 0", updateCalls)
+			}
+			if _, exists := manager.controllers.Get(cachedPC.GetName()); exists {
+				t.Errorf("controller map entry should be removed for a terminating ProviderConfig")
+			}
+
+			storedPC, err := providerConfigFromClient(ctx, fakeClient, cachedPC.GetName())
+			if err != nil {
+				t.Fatalf("providerConfigFromClient(%q) failed: %v", cachedPC.GetName(), err)
+			}
+			if diff := cmp.Diff(tc.serverFinalizers, storedPC.GetFinalizers()); diff != "" {
+				t.Errorf("stored finalizers mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestManagerStartSkipsWhenDeletionStartsDuringConflictRetry(t *testing.T) {
+	ctx := t.Context()
+	fakeClient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil)
+	mockStarter := newMockControllerStarter()
+
+	finalizerName := "test-finalizer"
+	manager := newManager(fakeClient, finalizerName, mockStarter)
+
+	pc := createTestProviderConfig("test-pc")
+	pc.SetFinalizers([]string{"other-controller-1"})
+	if err := createProviderConfigInClient(ctx, fakeClient, pc); err != nil {
+		t.Fatalf("createProviderConfigInClient(%q) failed: %v", pc.GetName(), err)
+	}
+
+	// The first update loses the race to a delete request, which sets the
+	// DeletionTimestamp and returns a conflict.
+	var updateCalls int
+	fakeClient.PrependReactor("update", "providerconfigs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		updateCalls++
+		if updateCalls > 1 {
+			return false, nil, nil
+		}
+		tracker := fakeClient.Tracker()
+		obj, err := tracker.Get(providerConfigGVR, "", pc.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		latest := obj.(*unstructured.Unstructured).DeepCopy()
+		now := metav1.Now()
+		latest.SetDeletionTimestamp(&now)
+		if err := tracker.Update(providerConfigGVR, latest, ""); err != nil {
+			return true, nil, err
+		}
+		return true, nil, newConflictError(pc.GetName())
+	})
+
+	if err := manager.StartControllersForProviderConfig(ctx, pc); err != nil {
+		t.Fatalf("StartControllersForProviderConfig(%q) = %v, want nil for a terminating ProviderConfig", pc.GetName(), err)
+	}
+	if got, want := updateCalls, 1; got != want {
+		t.Errorf("updateCalls = %d, want %d (no update after deletion started)", got, want)
+	}
+	if got := mockStarter.getStartCallCount(); got != 0 {
+		t.Errorf("mockStarter.getStartCallCount() = %d, want 0", got)
+	}
+	if _, exists := manager.controllers.Get(pc.GetName()); exists {
+		t.Errorf("controller map entry should be removed for a terminating ProviderConfig")
+	}
+
+	storedPC, err := providerConfigFromClient(ctx, fakeClient, pc.GetName())
+	if err != nil {
+		t.Fatalf("providerConfigFromClient(%q) failed: %v", pc.GetName(), err)
+	}
+	if diff := cmp.Diff([]string{"other-controller-1"}, storedPC.GetFinalizers()); diff != "" {
+		t.Errorf("stored finalizers mismatch (-want +got):\n%s", diff)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/util/retry"
 	mtmetrics "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/mtmetrics"
 )
 
@@ -72,22 +73,84 @@ func (m *manager) getProviderConfig(ctx context.Context, name string) (*unstruct
 	return m.client.Resource(providerConfigGVR).Get(ctx, name, metav1.GetOptions{})
 }
 
+// ensureFinalizer adds m.finalizerName to the named ProviderConfig if absent,
+// retrying on optimistic concurrency conflicts (HTTP 409) with a fresh Get so
+// concurrent controllers' finalizers are preserved. It returns the latest server
+// object and whether this call added the finalizer. A terminating ProviderConfig
+// is returned unchanged, because the API server rejects new finalizers on it;
+// the caller must check its DeletionTimestamp.
+func (m *manager) ensureFinalizer(ctx context.Context, name string) (*unstructured.Unstructured, bool, error) {
+	var updatedPC *unstructured.Unstructured
+	var added bool
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		latestPC, err := m.getProviderConfig(ctx, name)
+		if err != nil {
+			return err
+		}
+		finalizers := latestPC.GetFinalizers()
+		if !latestPC.GetDeletionTimestamp().IsZero() || slices.Contains(finalizers, m.finalizerName) {
+			updatedPC = latestPC
+			return nil
+		}
+		latestPC.SetFinalizers(append(finalizers, m.finalizerName))
+		updated, err := m.client.Resource(providerConfigGVR).Update(ctx, latestPC, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+		added = true
+		if updated != nil {
+			updatedPC = updated
+		} else {
+			updatedPC = latestPC
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return updatedPC, added, nil
+}
+
+// removeFinalizer removes m.finalizerName from the named ProviderConfig if present,
+// retrying on optimistic concurrency conflicts (HTTP 409) with a fresh Get so
+// concurrent controllers' finalizers are preserved. Missing objects are treated
+// as already cleaned up.
+func (m *manager) removeFinalizer(ctx context.Context, name string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		latestPC, err := m.getProviderConfig(ctx, name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.Info("ProviderConfig not found; skipping finalizer removal")
+				return nil
+			}
+			return err
+		}
+
+		finalizers := latestPC.GetFinalizers()
+		if !slices.Contains(finalizers, m.finalizerName) {
+			return nil
+		}
+		latestPC.SetFinalizers(slices.DeleteFunc(finalizers, func(f string) bool { return f == m.finalizerName }))
+		_, err = m.client.Resource(providerConfigGVR).Update(ctx, latestPC, metav1.UpdateOptions{})
+		if apierrors.IsNotFound(err) {
+			klog.Info("ProviderConfig not found during finalizer removal; skipping")
+			return nil
+		}
+		return err
+	})
+}
+
 // rollbackFinalizerOnStartFailure removes the finalizer after a start failure
 // so that ProviderConfig deletion is not blocked.
 func (m *manager) rollbackFinalizerOnStartFailure(ctx context.Context, pc *unstructured.Unstructured, cause error) {
-	pcLatest, err := m.getProviderConfig(ctx, pc.GetName())
-	if err != nil {
-		klog.Errorf("failed to get latest ProviderConfig for finalizer rollback: %v, originalError: %v", err, cause)
-		return
-	}
-	finalizers := pcLatest.GetFinalizers()
-	newFinalizers := slices.DeleteFunc(finalizers, func(f string) bool { return f == m.finalizerName })
-	if len(newFinalizers) != len(finalizers) {
-		pcLatest.SetFinalizers(newFinalizers)
-		_, err := m.client.Resource(providerConfigGVR).Update(ctx, pcLatest, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to clean up finalizer after start failure: %v, originalError: %v", err, cause)
-		}
+	if err := m.removeFinalizer(ctx, pc.GetName()); err != nil {
+		klog.Errorf("failed to clean up finalizer after start failure: %v, originalError: %v", err, cause)
 	}
 }
 
@@ -121,22 +184,30 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 
 	klog.Info("Starting controllers for provider config")
 
-	finalizers := pc.GetFinalizers()
-	hadFinalizer := slices.Contains(finalizers, m.finalizerName)
-
-	if !hadFinalizer {
-		pc = pc.DeepCopy()
-		pc.SetFinalizers(append(finalizers, m.finalizerName))
-		_, err := m.client.Resource(providerConfigGVR).Update(ctx, pc, metav1.UpdateOptions{})
+	startPC := pc
+	addedFinalizer := false
+	if !slices.Contains(pc.GetFinalizers(), m.finalizerName) {
+		updatedPC, added, err := m.ensureFinalizer(ctx, pc.GetName())
 		if err != nil {
 			if !existed {
 				m.controllers.Delete(pcKey)
 			}
 			return fmt.Errorf("failed to ensure finalizer %s for provider config %s: %w", m.finalizerName, pcKey, err)
 		}
+		if !updatedPC.GetDeletionTimestamp().IsZero() {
+			// Deletion started after the cached pc was read. The stop path
+			// handles the terminating object.
+			if !existed {
+				m.controllers.Delete(pcKey)
+			}
+			klog.Info("ProviderConfig started terminating; skipping start")
+			return nil
+		}
+		startPC = updatedPC
+		addedFinalizer = added
 	}
 
-	controllerStopCh, err := m.controllerStarter.StartController(pc)
+	controllerStopCh, err := m.controllerStarter.StartController(startPC)
 	if err == nil && controllerStopCh == nil {
 		err = fmt.Errorf("controller starter returned nil channel")
 	}
@@ -144,8 +215,8 @@ func (m *manager) StartControllersForProviderConfig(ctx context.Context, pc *uns
 		if !existed {
 			m.controllers.Delete(pcKey)
 		}
-		if !hadFinalizer {
-			m.rollbackFinalizerOnStartFailure(ctx, pc, err)
+		if addedFinalizer {
+			m.rollbackFinalizerOnStartFailure(ctx, startPC, err)
 		}
 		return fmt.Errorf("failed to start controller for provider config %s: %w", pcKey, err)
 	}
@@ -203,24 +274,8 @@ func (m *manager) StopControllersForProviderConfig(ctx context.Context, pc *unst
 		klog.Info("Controllers for provider config do not exist")
 	}
 
-	// Fetch the latest ProviderConfig to ensure we have current finalizer state.
-	latestPC, err := m.getProviderConfig(ctx, pc.GetName())
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			klog.Info("ProviderConfig not found while stopping controllers; skipping finalizer removal")
-			return nil
-		}
-		return fmt.Errorf("Failed to get latest ProviderConfig for finalizer removal: %w", err)
-	}
-
-	finalizers := latestPC.GetFinalizers()
-	newFinalizers := slices.DeleteFunc(finalizers, func(f string) bool { return f == m.finalizerName })
-	if len(newFinalizers) != len(finalizers) {
-		latestPC.SetFinalizers(newFinalizers)
-		_, err := m.client.Resource(providerConfigGVR).Update(ctx, latestPC, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("Failed to delete finalizer %s for provider config %s: %w", m.finalizerName, pcKey, err)
-		}
+	if err := m.removeFinalizer(ctx, pc.GetName()); err != nil {
+		return fmt.Errorf("failed to delete finalizer %s for provider config %s: %w", m.finalizerName, pcKey, err)
 	}
 	klog.Info("Stopped controllers for provider config")
 	return nil
