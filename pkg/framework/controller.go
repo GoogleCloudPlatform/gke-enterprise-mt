@@ -64,9 +64,17 @@ type Controller struct {
 // New creates a new Controller that manages ProviderConfig resources.
 func New(client dynamic.Interface, providerConfigInformer cache.SharedIndexInformer, finalizerName string, controllerStarter ControllerStarter, stopCh <-chan struct{},
 ) *Controller {
-	manager := newManager(
+	return NewWithControllerName(client, providerConfigInformer, finalizerName, "", controllerStarter, stopCh)
+}
+
+// NewWithControllerName creates a new Controller that manages ProviderConfig resources
+// and labels its lifecycle metrics with the given controllerName.
+func NewWithControllerName(client dynamic.Interface, providerConfigInformer cache.SharedIndexInformer, finalizerName string, controllerName string, controllerStarter ControllerStarter, stopCh <-chan struct{},
+) *Controller {
+	manager := newManagerWithControllerName(
 		client,
 		finalizerName,
+		controllerName,
 		controllerStarter,
 	)
 	return newController(manager, providerConfigInformer, stopCh)
