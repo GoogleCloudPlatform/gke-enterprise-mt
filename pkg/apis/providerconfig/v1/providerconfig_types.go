@@ -41,7 +41,7 @@ type ProviderNetworkConfig struct {
 type ProviderConfigSubnetInfo struct {
 	// Subnetwork is the name of the subnetwork in the format projects/{project}/regions/{region}/subnetworks/{subnet}.
 	Subnetwork string `json:"subnetwork"`
-	// The primary IP range of the subnet in CIDR notation (e.g.,`10.0.0.0/16`).
+	// The primary IPv4 range of the subnet in CIDR notation (e.g.,`10.0.0.0/16`).
 	CIDR string `json:"cidr"`
 
 	// Node IP address ranges in CIDR notation. This is the replacement for CIDR field above to better support dual stack clusters.
@@ -50,6 +50,8 @@ type ProviderConfigSubnetInfo struct {
 	NodeCIDRs *Range `json:"nodeCIDRs,omitempty"`
 
 	// PodRanges contains the Pod CIDR ranges that are part of this Subnet.
+	//
+	// +kubebuilder:validation:Optional
 	PodRanges []ProviderConfigSecondaryRange `json:"podRanges"`
 }
 
