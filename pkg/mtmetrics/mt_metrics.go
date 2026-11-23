@@ -71,6 +71,9 @@ type metricKey struct {
 //
 // It is thread-safe.
 type GlobalMetricsTracker struct {
+	// regMu serializes RegisterTo. It is separate from mu because
+	// prometheus.Registerer.Register calls Describe, which takes mu.
+	regMu      sync.Mutex
 	mu         sync.Mutex
 	collectors map[string]prometheus.Collector
 	// gaugeValues maps: metricKey -> value
@@ -109,6 +112,9 @@ func (t *GlobalMetricsTracker) RegisterTo(reg prometheus.Registerer) error {
 	if reg == nil {
 		return nil
 	}
+
+	t.regMu.Lock()
+	defer t.regMu.Unlock()
 
 	t.mu.Lock()
 	for _, r := range t.registries {
