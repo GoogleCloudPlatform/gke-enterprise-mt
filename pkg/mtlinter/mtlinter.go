@@ -64,13 +64,13 @@ func NewAnalyzer() *analysis.Analyzer {
 
 		inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-		ignoredByFile := make(map[*token.File]map[int]bool, len(pass.Files))
+		commentInfoByFile := make(map[*token.File]fileCommentInfo, len(pass.Files))
 		for _, file := range pass.Files {
 			if isTestFile(pass.Fset, file.Pos()) {
 				continue
 			}
 			if tf := pass.Fset.File(file.Pos()); tf != nil {
-				ignoredByFile[tf] = collectIgnoredLines(pass.Fset, file)
+				commentInfoByFile[tf] = collectFileCommentInfo(pass.Fset, file, pass.Report)
 			}
 		}
 
@@ -79,21 +79,33 @@ func NewAnalyzer() *analysis.Analyzer {
 			if isTestFile(pass.Fset, file.Pos()) {
 				continue
 			}
-			ignoredLines := ignoredByFile[pass.Fset.File(file.Pos())]
-			for _, imp := range file.Imports {
-				if hasIgnoreComment(imp.Doc) || hasIgnoreComment(imp.Comment) || isLineIgnored(pass.Fset, ignoredLines, imp.Pos(), imp.End()) {
+			info := commentInfoByFile[pass.Fset.File(file.Pos())]
+			for _, decl := range file.Decls {
+				genDecl, ok := decl.(*ast.GenDecl)
+				if !ok || genDecl.Tok != token.IMPORT {
 					continue
 				}
-				path, err := strconv.Unquote(imp.Path.Value)
-				if err != nil {
-					continue
-				}
-				for _, forbidden := range promautoImports {
-					if path == forbidden {
-						pass.Report(analysis.Diagnostic{
-							Pos:     imp.Pos(),
-							Message: "import of promauto is forbidden in MT mode; it registers metrics globally",
-						})
+				genDeclIgnored := !genDecl.Lparen.IsValid() && hasIgnoreComment(genDecl.Doc)
+				for _, spec := range genDecl.Specs {
+					imp, ok := spec.(*ast.ImportSpec)
+					if !ok {
+						continue
+					}
+					impLine := pass.Fset.Position(imp.Pos()).Line
+					if genDeclIgnored || hasIgnoreComment(imp.Doc) || info.sameLineValidIgnore[impLine] {
+						continue
+					}
+					path, err := strconv.Unquote(imp.Path.Value)
+					if err != nil {
+						continue
+					}
+					for _, forbidden := range promautoImports {
+						if path == forbidden {
+							pass.Report(analysis.Diagnostic{
+								Pos:     imp.Pos(),
+								Message: "import of promauto is forbidden in MT mode; it registers metrics globally",
+							})
+						}
 					}
 				}
 			}
@@ -104,14 +116,25 @@ func NewAnalyzer() *analysis.Analyzer {
 			if isTestFile(pass.Fset, file.Pos()) {
 				continue
 			}
-			ignoredLines := ignoredByFile[pass.Fset.File(file.Pos())]
+			info := commentInfoByFile[pass.Fset.File(file.Pos())]
 			for _, decl := range file.Decls {
 				genDecl, ok := decl.(*ast.GenDecl)
 				if !ok || genDecl.Tok != token.VAR {
 					continue
 				}
-				if hasIgnoreComment(genDecl.Doc) {
-					continue
+				if !genDecl.Lparen.IsValid() {
+					if hasIgnoreComment(genDecl.Doc) {
+						continue
+					}
+				} else if genDecl.Doc != nil {
+					for _, c := range genDecl.Doc.List {
+						if isDirective, hasReason := parseIgnoreComment(c); isDirective && hasReason {
+							pass.Report(analysis.Diagnostic{
+								Pos:     c.Pos(),
+								Message: "mtlint:ignore on a var block is not supported; annotate each variable individually",
+							})
+						}
+					}
 				}
 
 				for _, spec := range genDecl.Specs {
@@ -119,12 +142,13 @@ func NewAnalyzer() *analysis.Analyzer {
 					if !ok {
 						continue
 					}
-					if hasIgnoreComment(valueSpec.Doc) || hasIgnoreComment(valueSpec.Comment) {
+					if hasIgnoreComment(valueSpec.Doc) {
 						continue
 					}
 
 					for _, name := range valueSpec.Names {
-						if isLineIgnored(pass.Fset, ignoredLines, name.Pos(), valueSpec.End()) {
+						nameLine := pass.Fset.Position(name.Pos()).Line
+						if info.sameLineValidIgnore[nameLine] {
 							continue
 						}
 						obj := pass.TypesInfo.Defs[name]
@@ -152,8 +176,9 @@ func NewAnalyzer() *analysis.Analyzer {
 				return
 			}
 			call := n.(*ast.CallExpr)
-			ignoredLines := ignoredByFile[pass.Fset.File(call.Pos())]
-			if isLineIgnored(pass.Fset, ignoredLines, call.Pos(), call.End()) {
+			info := commentInfoByFile[pass.Fset.File(call.Pos())]
+			callLine := pass.Fset.Position(call.Pos()).Line
+			if info.sameLineValidIgnore[callLine] || hasPrecedingCallIgnore(info, callLine) {
 				return
 			}
 			fun, ok := call.Fun.(*ast.SelectorExpr)
@@ -228,23 +253,126 @@ func isTestFile(fset *token.FileSet, pos token.Pos) bool {
 	return f != nil && strings.HasSuffix(f.Name(), "_test.go")
 }
 
-func collectIgnoredLines(fset *token.FileSet, file *ast.File) map[int]bool {
-	ignored := make(map[int]bool)
-	if fset == nil || file == nil {
-		return ignored
+type fileCommentInfo struct {
+	sameLineValidIgnore   map[int]bool
+	standaloneCommentLine map[int]bool
+	standaloneValidIgnore map[int]bool
+}
+
+func parseIgnoreComment(c *ast.Comment) (isDirective bool, hasReason bool) {
+	if c == nil || !strings.HasPrefix(c.Text, "//") {
+		return false, false
 	}
+	s := strings.TrimRight(c.Text[2:], "\r")
+	s = strings.TrimLeft(s, " \t")
+	if !strings.HasPrefix(s, ignoreDirective) {
+		return false, false
+	}
+	rest := s[len(ignoreDirective):]
+	if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+		return false, false
+	}
+	return true, strings.TrimSpace(rest) != ""
+}
+
+func collectCodeLines(fset *token.FileSet, file *ast.File) map[int]bool {
+	codeLines := make(map[int]bool)
+	if fset == nil || file == nil {
+		return codeLines
+	}
+	markPos := func(p token.Pos) {
+		if p.IsValid() {
+			codeLines[fset.Position(p).Line] = true
+		}
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		switch x := n.(type) {
+		case *ast.Comment, *ast.CommentGroup:
+			return false
+		case *ast.File:
+			markPos(x.Package)
+			return true
+		case *ast.BasicLit:
+			if x.Pos().IsValid() && x.End() > x.Pos() {
+				startLine := fset.Position(x.Pos()).Line
+				endLine := fset.Position(x.End() - 1).Line
+				for line := startLine; line <= endLine; line++ {
+					codeLines[line] = true
+				}
+			}
+			return false
+		case *ast.GenDecl:
+			markPos(x.Lparen)
+			markPos(x.Rparen)
+		case *ast.CallExpr:
+			markPos(x.Lparen)
+			markPos(x.Ellipsis)
+			markPos(x.Rparen)
+		case *ast.AssignStmt:
+			markPos(x.TokPos)
+		case *ast.BinaryExpr:
+			markPos(x.OpPos)
+		case *ast.KeyValueExpr:
+			markPos(x.Colon)
+		case *ast.CaseClause:
+			markPos(x.Colon)
+		case *ast.CommClause:
+			markPos(x.Colon)
+		case *ast.TypeSpec:
+			markPos(x.Assign)
+		}
+		markPos(n.Pos())
+		if end := n.End(); end.IsValid() && end > n.Pos() {
+			markPos(end - 1)
+		}
+		return true
+	})
+	return codeLines
+}
+
+func collectFileCommentInfo(fset *token.FileSet, file *ast.File, report func(analysis.Diagnostic)) fileCommentInfo {
+	info := fileCommentInfo{
+		sameLineValidIgnore:   make(map[int]bool),
+		standaloneCommentLine: make(map[int]bool),
+		standaloneValidIgnore: make(map[int]bool),
+	}
+	if fset == nil || file == nil {
+		return info
+	}
+	codeLines := collectCodeLines(fset, file)
 	for _, cg := range file.Comments {
 		for _, c := range cg.List {
-			if strings.Contains(c.Text, ignoreDirective) {
-				startLine := fset.Position(c.Pos()).Line
-				endLine := fset.Position(c.End()).Line
-				for line := startLine; line <= endLine; line++ {
-					ignored[line] = true
+			if !strings.HasPrefix(c.Text, "//") {
+				continue
+			}
+			line := fset.Position(c.Pos()).Line
+			standalone := !codeLines[line]
+			if standalone {
+				info.standaloneCommentLine[line] = true
+			}
+			isDirective, hasReason := parseIgnoreComment(c)
+			if !isDirective {
+				continue
+			}
+			if !hasReason {
+				if report != nil {
+					report(analysis.Diagnostic{
+						Pos:     c.Pos(),
+						Message: "mtlint:ignore requires a reason",
+					})
 				}
+				continue
+			}
+			info.sameLineValidIgnore[line] = true
+			if standalone {
+				info.standaloneValidIgnore[line] = true
 			}
 		}
 	}
-	return ignored
+	return info
 }
 
 func hasIgnoreComment(cg *ast.CommentGroup) bool {
@@ -252,21 +380,16 @@ func hasIgnoreComment(cg *ast.CommentGroup) bool {
 		return false
 	}
 	for _, c := range cg.List {
-		if strings.Contains(c.Text, ignoreDirective) {
+		if isDirective, hasReason := parseIgnoreComment(c); isDirective && hasReason {
 			return true
 		}
 	}
 	return false
 }
 
-func isLineIgnored(fset *token.FileSet, ignoredLines map[int]bool, start, end token.Pos) bool {
-	if fset == nil || len(ignoredLines) == 0 {
-		return false
-	}
-	startLine := fset.Position(start).Line
-	endLine := fset.Position(end).Line
-	for line := startLine; line <= endLine; line++ {
-		if ignoredLines[line] {
+func hasPrecedingCallIgnore(info fileCommentInfo, callLine int) bool {
+	for line := callLine - 1; line >= 1 && info.standaloneCommentLine[line]; line-- {
+		if info.standaloneValidIgnore[line] {
 			return true
 		}
 	}
