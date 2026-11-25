@@ -3,6 +3,7 @@ package gce
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,9 @@ func TokenURLForProviderConfig(existingTokenURL string, providerConfig *provider
 
 	// Prioritize the new AuthConfig field as the source of truth.
 	if providerConfig.Spec.AuthConfig != nil && providerConfig.Spec.AuthConfig.TokenURL != "" {
+		if err := validateAuthConfigTokenURL(existingTokenURL, providerConfig.Spec.AuthConfig.TokenURL); err != nil {
+			return "", err
+		}
 		return providerConfig.Spec.AuthConfig.TokenURL, nil
 	}
 
@@ -140,4 +144,58 @@ func extractLocationFromTokenURL(tokenURL string) string {
 		}
 	}
 	return ""
+}
+
+func validateAuthConfigTokenURL(existingTokenURL, authTokenURL string) error {
+	u, err := url.Parse(authTokenURL)
+	if err != nil {
+		return fmt.Errorf("invalid AuthConfig tokenURL %q: %w", authTokenURL, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("invalid AuthConfig tokenURL %q: scheme must be https", authTokenURL)
+	}
+	if u.Host == "" || u.Port() != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("invalid AuthConfig tokenURL %q: must specify host only without port, userinfo, query, or fragment", authTokenURL)
+	}
+	if !strings.HasPrefix(u.Path, "/") || strings.Contains(u.Path, "..") {
+		return fmt.Errorf("invalid AuthConfig tokenURL %q: invalid path", authTokenURL)
+	}
+
+	host := strings.ToLower(u.Hostname())
+	if existingTokenURL != "" {
+		if baseURL, err := url.Parse(existingTokenURL); err == nil && baseURL.Scheme == "https" && baseURL.Port() == "" && baseURL.Hostname() != "" {
+			if strings.EqualFold(host, baseURL.Hostname()) {
+				return nil
+			}
+		}
+	}
+	if isAllowedGKEAuthHost(host) {
+		return nil
+	}
+	return fmt.Errorf("invalid AuthConfig tokenURL %q: untrusted host %q", authTokenURL, u.Host)
+}
+
+func isAllowedGKEAuthHost(host string) bool {
+	if host == "gkeauth.googleapis.com" {
+		return true
+	}
+	for _, suffix := range []string{"-gkeauth.googleapis.com", "-gkeauth.sandbox.googleapis.com"} {
+		if prefix, ok := strings.CutSuffix(host, suffix); ok && isValidDNSLabel(prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidDNSLabel(s string) bool {
+	if len(s) == 0 || len(s) > 63 || s[0] == '-' || s[len(s)-1] == '-' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+			return false
+		}
+	}
+	return true
 }
