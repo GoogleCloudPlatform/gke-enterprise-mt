@@ -87,6 +87,78 @@ func TestTokenURLForProviderConfig(t *testing.T) {
 			},
 			wantTokenURL: "https://staging-gkeauth.googleapis.com/v60/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
 		},
+		{
+			name:     "valid AuthConfig tokenURL matching gkeauth prod host succeeds",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantTokenURL: "https://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+		},
+		{
+			name:     "valid AuthConfig tokenURL on sandbox gkeauth host succeeds",
+			tokenURL: "https://preprod-gkeauth.sandbox.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://devsandbox-us-c1-gkeauth.sandbox.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantTokenURL: "https://devsandbox-us-c1-gkeauth.sandbox.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+		},
+		{
+			name:     "valid AuthConfig tokenURL matching custom universe existingTokenURL host succeeds",
+			tokenURL: "https://gkeauth.example-universe.internal/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://gkeauth.example-universe.internal/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantTokenURL: "https://gkeauth.example-universe.internal/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+		},
+		{
+			name:     "rejects non-HTTPS AuthConfig tokenURL",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "http://gkeauth.googleapis.com/v1/projects/67890/locations/us-central1/tenants/example-tenant:generateTenantToken",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:     "rejects untrusted host in AuthConfig tokenURL",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:     "rejects userinfo port query fragment or traversal in AuthConfig tokenURL",
+			tokenURL: "https://gkeauth.googleapis.com/v1/projects/12345/locations/us-central1/clusters/example-cluster:generateToken",
+			providerConfig: &providerconfigv1.ProviderConfig{
+				Spec: providerconfigv1.ProviderConfigSpec{
+					AuthConfig: &providerconfigv1.AuthConfig{
+						TokenURL: "https://gkeauth.googleapis.com:8443/v1/projects/67890:generateTenantToken",
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
